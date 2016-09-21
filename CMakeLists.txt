@@ -1,0 +1,66 @@
+cmake_minimum_required(VERSION 2.8.8)
+project("ospray")
+
+SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+
+# configure ospray stuff ---------------
+
+# compiler
+include(${PROJECT_SOURCE_DIR}/cmake/gcc.cmake)
+
+# ----------------
+set( APP_NAME "ospray-test" )
+MESSAGE( STATUS "application:" ${APP_NAME} )
+MESSAGE( STATUS "binary output:" ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} )
+
+
+# find ospray common -----
+set( OSPRAY_SOURCE_DIR /zhome/academic/HLRS/zmc/zmcdkoer/ospr/ospray-master )
+set( OSPRAYCOMMON_INCLUDE_DIR ${OSPRAY_SOURCE_DIR} ) # this is to get common/affineSpace.h etc. Its weird since common is the ospray_common library...
+
+# find OSPRAY ------
+set( OSPRAY_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include )
+set( OSPRAY_LIBRARIES ${CMAKE_INSTALL_PREFIX}/lib64/libospray.so
+					  ${CMAKE_INSTALL_PREFIX}/lib64/libospray_common.so
+					  ${CMAKE_INSTALL_PREFIX}/lib64/libospray_xml.so
+					  ${CMAKE_INSTALL_PREFIX}/lib64/libospray_commandline.so)
+
+
+
+
+ADD_SUBDIRECTORY(common/miniSG) 
+
+find_package(rserver REQUIRED)
+if (rserver_FOUND)
+    message("-- Found rserver version ${rserver_VERSION}: ${rserver_INCLUDE_DIRS}")
+else ()
+    message(FATAL_ERROR "rserver not found")
+endif ()
+
+
+set( app_sources src/main.cpp )
+
+add_executable(${APP_NAME} ${app_sources} )
+
+# additional include directories ---
+include_directories( ${PROJECT_SOURCE_DIR}/include )
+
+include_directories( ${OSPRAYCOMMON_INCLUDE_DIR} )
+include_directories( ${OSPRAY_INCLUDE_DIR} )
+
+# the libraries such as ospray_common or ospray_importer etc. get installed but their headers do not get installed
+# therefore we will need to point it to the header locations in ospray source directory
+include_directories( ${OSPRAY_SOURCE_DIR}/apps )
+
+# moreover, other libraries such as ospray_commandline expect a different location again
+include_directories( ${OSPRAY_SOURCE_DIR}/apps/common )
+
+# ospray_cpp headers are installed into the ospray subdirectory within the ospray-include directory
+include_directories( ${OSPRAY_INCLUDE_DIR}/ospray )
+
+#include_directories( ${OSPRAYSG_INCLUDE_DIRS} )
+
+
+# additional libraries
+target_link_libraries(${APP_NAME} ${OSPRAY_LIBRARIES} ospray_minisg rserver )
+#target_link_libraries(${APP_NAME} ${OSPRAYSG_LIBRARIES} )
