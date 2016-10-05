@@ -37,6 +37,8 @@ int main (void)
 #include <czmq.h>
 #include <iostream>
 
+#include "si.h"
+
 //  This is our client task
 //  It connects to the server, and then sends a request once per second
 //  It collects responses as they arrive, and it prints them out. We will
@@ -57,6 +59,7 @@ client_task (void *args)
 
     zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
     int request_nbr = 0;
+    int counter = 0;
     while (true) {
         //  Tick once per second, pulling in arriving messages
         int centitick;
@@ -68,16 +71,29 @@ client_task (void *args)
             {
                 // receive message from server
                 zmsg_t *msg = zmsg_recv (client);
+
+                // note that there is no identity frame here
+                Parameter* param = param_from_zmsg(msg);
+
+                int value = *(int*)(param->m_data);
+                std::cout << "received: " << param->m_name << " type=" << Parameter::str(param->m_type) << " size=" << param->m_size <<  " value=" << value << std::endl;
+
+
                 // print message from server
-                std::cout << "client:received message from server\n";
-                zframe_print (zmsg_last (msg), identity);
+                //std::cout << "client:received message from server\n";
+                //std::string test_str = string_from_zframe(zmsg_last (msg));
+                //std::cout << identity << " " << test_str << std::endl;
+                //zframe_print (zmsg_last (msg), identity);
                 zmsg_destroy (&msg);
             }
         }
 
         // send a request to the server (this would be the rendered image)
         std::cout << "client:sending request\n";
-        zstr_sendf (client, "request #%d", ++request_nbr);
+        std::string image = ">                    <";
+        image[counter++%(image.size()-2) + 1] = 'o';
+        //zstr_sendf (client, "request #%d", ++request_nbr);
+        zstr_sendf (client, image.c_str());
     }
     zctx_destroy (&ctx);
     return NULL;

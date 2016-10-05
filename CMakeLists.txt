@@ -16,13 +16,14 @@ else ()
 endif ()
 
 
-add_executable(zmq-test-server main_server.cpp )
+add_executable(zmq-test-server main_server.cpp si.cpp )
+
 
 # required to allow including from custom install directory
 include_directories( ${CMAKE_INSTALL_PREFIX}/include )
 target_link_libraries(zmq-test-server ${czmq_LIBRARIES} )
 
-add_executable(zmq-test-client main_client.cpp )
+add_executable(zmq-test-client main_client.cpp si.cpp )
 
 # required to allow including from custom install directory
 include_directories( ${CMAKE_INSTALL_PREFIX}/include )
