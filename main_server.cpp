@@ -45,6 +45,15 @@ int main (void)
 
 static void server_worker (void *args, zctx_t *ctx, void *pipe);
 
+
+
+
+
+
+
+
+
+
 void *server_task (void *args)
 {
     //  Frontend socket talks to clients over TCP
@@ -56,6 +65,7 @@ void *server_task (void *args)
     void *backend = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_bind (backend, "inproc://backend");
 
+    /*
     //  Launch pool of worker threads, precise number is not critical
     int thread_nbr;
     for (thread_nbr = 0; thread_nbr < 5; thread_nbr++)
@@ -63,6 +73,79 @@ void *server_task (void *args)
 
     //  Connect backend to frontend via a proxy
     zmq_proxy (frontend, backend, NULL);
+    */
+
+
+
+
+
+    // test
+    {
+    	int rc = 0;
+
+	    int more;
+	    size_t moresz;
+	    zmq_pollitem_t itemsin [] =
+	    {
+	        { frontend, 0, ZMQ_POLLIN, 0 },
+	    };
+	    int num_poll_items = 1;
+	    zmq_pollitem_t itemsout [] =
+	    {
+	        { frontend, 0, ZMQ_POLLOUT, 0 },
+	    };
+
+	    //  Proxy can be in these three states
+	    enum {
+	        active,
+	        paused,
+	        terminated
+	    } state = active;
+
+	    while(1)
+	    {
+	    	// wait for messages from frontend or backend
+	    	//TODO: make this non-blocking
+		    int rc = zmq_poll (&itemsin[0], num_poll_items, -1);
+		    if (rc < 0)
+		        return NULL;
+
+	        //  Get the pollout separately because when combining this with pollin it maxes the CPU
+	        //  because pollout shall most of the time return directly.
+	        //  POLLOUT is only checked when frontend and backend sockets are not the same.
+            rc = zmq_poll (&itemsout [0], 1, 0);
+            if (rc < 0)
+                return NULL;
+
+        	
+
+	        //  process messages from frontend client (compute node)
+	        if (state == active &&  itemsin[0].revents & ZMQ_POLLIN)
+	        {
+	        	// now consume message (and forward it to websocket server)
+				zmsg_t* msg = zmsg_recv (frontend);
+
+				if(msg != NULL)
+				{
+					std::cout << "received message from client\n";
+					// TODO:deal with message and forward it to websocket server
+					zmsg_destroy(&msg);
+				}
+	        }
+
+	        // process messages from websocket server (user client)
+	        //if there is something in the websocket incomming queue
+	        //use mutex to access queue
+	        {
+
+	        }
+	    };
+
+    }
+
+
+
+
 
     zctx_destroy (&ctx);
     return NULL;
@@ -77,7 +160,8 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
     void *worker = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_connect (worker, "inproc://backend");
 
-    while (true) {
+    while (true)
+    {
         // receive a message from the client ---
         zmsg_t *msg = zmsg_recv (worker);
         //  The DEALER socket gives us the reply envelope and message
@@ -94,7 +178,17 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
         	std::cout << "image:" << image << std::endl;
         }
 
-        // produce message from user client (frontend)
+        // receive a message from the render client ---
+        {
+
+        }
+
+
+        // receive a message from the user client ---
+
+
+
+        // alternatively produce message from user client
         {
         	int value = 123456;
 
@@ -143,9 +237,83 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
 //  The main thread simply starts several clients and a server, and then
 //  waits for the server to finish.
 
+/*
 int main (void)
 {
     zthread_new (server_task, NULL);
     zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
     return 0;
 }
+*/
+
+
+
+///*
+// websocket server test
+#define ASIO_STANDALONE
+#define _WEBSOCKETPP_CPP11_STRICT_ // tells websocketpp that we have a full-featured c++11 compiler...
+#include <websocketpp/server.hpp>
+#include <websocketpp/config/asio_no_tls.hpp>
+
+typedef websocketpp::server<websocketpp::config::asio> server;
+
+using websocketpp::lib::placeholders::_1;
+using websocketpp::lib::placeholders::_2;
+using websocketpp::lib::bind;
+
+// pull out the type of messages sent by our config
+typedef server::message_ptr message_ptr;
+
+// Define a callback to handle incoming messages
+void on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg)
+{
+    std::cout << "on_message called with hdl: " << hdl.lock().get()
+              << " and message: " << msg->get_payload()
+              << std::endl;
+
+    // check for a special command to instruct the server to stop listening so
+    // it can be cleanly exited.
+    if (msg->get_payload() == "stop-listening") {
+        s->stop_listening();
+        return;
+    }
+
+    try {
+        s->send(hdl, msg->get_payload(), msg->get_opcode());
+    } catch (const websocketpp::lib::error_code& e) {
+        std::cout << "Echo failed because: " << e
+                  << "(" << e.message() << ")" << std::endl;
+    }
+}
+
+int main()
+{
+    // Create a server endpoint
+    server echo_server;
+
+    try {
+        // Set logging settings
+        echo_server.set_access_channels(websocketpp::log::alevel::all);
+        echo_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
+
+        // Initialize Asio
+        echo_server.init_asio();
+
+        // Register our message handler
+        echo_server.set_message_handler(bind(&on_message,&echo_server,::_1,::_2));
+
+        // Listen on port 9002
+        echo_server.listen(9002);
+
+        // Start the server accept loop
+        echo_server.start_accept();
+
+        // Start the ASIO io_service run loop
+        echo_server.run();
+    } catch (websocketpp::exception const & e) {
+        std::cout << e.what() << std::endl;
+    } catch (...) {
+        std::cout << "other exception" << std::endl;
+    }
+}
+//*/

@@ -44,6 +44,8 @@ int main (void)
 //  It collects responses as they arrive, and it prints them out. We will
 //  run several client tasks in parallel, each with a different random ID.
 
+
+
 static void *
 client_task (void *args)
 {
@@ -55,7 +57,7 @@ client_task (void *args)
     sprintf (identity, "%04X-%04X", randof (0x10000), randof (0x10000));
     zsocket_set_identity (client, identity);
     //zsocket_connect (client, "tcp://localhost:5570");
-    zsocket_connect (client, "tcp://193.196.155.54:5570");
+    zsocket_connect (client, "tcp://193.196.155.55:5570");
 
     zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
     int request_nbr = 0;
@@ -78,6 +80,8 @@ client_task (void *args)
                 int value = *(int*)(param->m_data);
                 std::cout << "received: " << param->m_name << " type=" << Parameter::str(param->m_type) << " size=" << param->m_size <<  " value=" << value << std::endl;
 
+                // we let the parameter steer our counter
+                counter = value;
 
                 // print message from server
                 //std::cout << "client:received message from server\n";
