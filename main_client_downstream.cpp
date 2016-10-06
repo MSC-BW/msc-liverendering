@@ -30,7 +30,7 @@ struct WebsocketClient
         c.set_message_handler(
             [&](websocketpp::connection_hdl, client::message_ptr const& msg)
             {
-                std::cout << msg->get_payload() << " received" << std::endl;
+                std::cout << "received from server: " << msg->get_payload() <<std::endl;
 
                 if(msg->get_payload() == "stop listening")
                     con->close(websocketpp::close::status::normal, "");
@@ -52,11 +52,15 @@ struct WebsocketClient
 
         websocketpp::lib::error_code ec;
         con = c.get_connection(url, ec);
-        std::cout << ec.message() << std::endl;
+        std::cout << "get_connection result: " << ec.message() << std::endl;
      
         c.connect(con);
      
-        //ios.run();  
+    }
+
+    void run()
+    {
+        ios.run();          
     }
 
     client c;
@@ -68,7 +72,7 @@ struct WebsocketClient
 WebsocketClient* g_wsclient;
 void client_loop()
 {
-     g_wsclient->ios.run();  
+     g_wsclient->run();
 }
 
 
@@ -83,15 +87,13 @@ int main()
 
     while(1)
     {
+        // send text messages to server ---
         printf("Enter message:");
         gets(msg);
-        //g_wsclient->con->send(std::string("stop listening"), websocketpp::frame::opcode::text);
         g_wsclient->con->send(std::string(msg), websocketpp::frame::opcode::text);
+
+        // 
     }
-
-    std::cout << msg << std::endl;
-
-
 }
 
 
