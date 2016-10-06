@@ -7,35 +7,111 @@
 #include <iostream>
 
 
-/*
-int main (void)
-{
-    //  Socket to talk to clients
-    void *context = zmq_ctx_new ();
-    void *responder = zmq_socket (context, ZMQ_REP);
-    int rc = zmq_bind (responder, "tcp://*:5555");
-    assert (rc == 0);
-
-    std::cout << "running server...\n";
-    while (1) {
-        char buffer [10];
-        zmq_recv (responder, buffer, 10, 0);
-        printf ("Received Hello\n");
-        sleep (1);          //  Do some 'work'
-        zmq_send (responder, "World", 5, 0);
-    }
-    return 0;
-}
-*/
-
-
-
+// required for websocket server test
+#define ASIO_STANDALONE
+#define _WEBSOCKETPP_CPP11_STRICT_ // tells websocketpp that we have a full-featured c++11 compiler...
+#include <websocketpp/server.hpp>
+#include <websocketpp/config/asio_no_tls.hpp>
 
 
 #include <czmq.h>
-#include <iostream>
-
 #include "si.h"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct WebsocketServer
+{
+	typedef websocketpp::server<websocketpp::config::asio> server;
+	//using websocketpp::lib::placeholders::_1;
+	//using websocketpp::lib::placeholders::_2;
+	//using websocketpp::lib::bind;
+
+	// pull out the type of messages sent by our config
+	typedef server::message_ptr message_ptr;
+
+	WebsocketServer()
+	{
+	    try {
+	        // Set logging settings
+	        //echo_server.set_access_channels(websocketpp::log::alevel::all);
+	        //echo_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
+	        echo_server.clear_access_channels(websocketpp::log::alevel::all);
+
+	        // Initialize Asio
+	        echo_server.init_asio();
+
+	        // Register our message handler
+	        echo_server.set_message_handler(std::bind(&WebsocketServer::on_message, this, std::placeholders::_1,std::placeholders::_2));
+
+	        // Listen on port 9002
+	        echo_server.listen(9002);
+
+	        // Start the server accept loop
+	        echo_server.start_accept();
+
+	        //// Start the ASIO io_service run loop
+	        //server.echo_server.run();
+	    } catch (websocketpp::exception const & e) {
+	        std::cout << e.what() << std::endl;
+	    } catch (...) {
+	        std::cout << "other exception" << std::endl;
+	    }
+
+	}
+
+	void run()
+	{
+		echo_server.run();
+	}
+
+
+	// Define a callback to handle incoming messages
+	void on_message(websocketpp::connection_hdl hdl, WebsocketServer::message_ptr msg)
+	{
+		temp_hdl = hdl;
+	    std::cout << "on_message called with hdl: " << hdl.lock().get()
+	              << " and message: " << msg->get_payload()
+	              << std::endl;
+
+	    // check for a special command to instruct the server to stop listening so
+	    // it can be cleanly exited.
+	    if (msg->get_payload() == "stop-listening") {
+	    	std::cout << "WebsocketServer::stop_listening";
+	        echo_server.stop_listening();
+	        return;
+	    }
+
+	    try {
+	        echo_server.send(hdl, msg->get_payload(), msg->get_opcode());
+	    } catch (const websocketpp::lib::error_code& e) {
+	        std::cout << "Echo failed because: " << e
+	                  << "(" << e.message() << ")" << std::endl;
+	    }
+	}
+
+
+	// Create a server endpoint
+    server echo_server;
+    websocketpp::connection_hdl temp_hdl;
+};
+WebsocketServer* g_wsserver;
+
+
+
 
 //  This is our server task.
 //  It uses the multithreaded server model to deal requests out to a pool
@@ -44,14 +120,6 @@ int main (void)
 //  once.
 
 static void server_worker (void *args, zctx_t *ctx, void *pipe);
-
-
-
-
-
-
-
-
 
 
 void *server_task (void *args)
@@ -128,7 +196,11 @@ void *server_task (void *args)
 				if(msg != NULL)
 				{
 					std::cout << "received message from client\n";
+
 					// TODO:deal with message and forward it to websocket server
+					std::string text = "image!!!!";
+					g_wsserver->echo_server.send(g_wsserver->temp_hdl, text, websocketpp::frame::opcode::text);
+
 					zmsg_destroy(&msg);
 				}
 	        }
@@ -249,106 +321,24 @@ int main (void)
 
 
 ///*
-// websocket server test
-#define ASIO_STANDALONE
-#define _WEBSOCKETPP_CPP11_STRICT_ // tells websocketpp that we have a full-featured c++11 compiler...
-#include <websocketpp/server.hpp>
-#include <websocketpp/config/asio_no_tls.hpp>
 
 
 
 
 
-
-
-
-
-struct WebsocketServer
-{
-	typedef websocketpp::server<websocketpp::config::asio> server;
-	//using websocketpp::lib::placeholders::_1;
-	//using websocketpp::lib::placeholders::_2;
-	//using websocketpp::lib::bind;
-
-	// pull out the type of messages sent by our config
-	typedef server::message_ptr message_ptr;
-
-	WebsocketServer()
-	{
-	    try {
-	        // Set logging settings
-	        echo_server.set_access_channels(websocketpp::log::alevel::all);
-	        echo_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
-
-	        // Initialize Asio
-	        echo_server.init_asio();
-
-	        // Register our message handler
-	        echo_server.set_message_handler(std::bind(&WebsocketServer::on_message, this, std::placeholders::_1,std::placeholders::_2));
-
-	        // Listen on port 9002
-	        echo_server.listen(9002);
-
-	        // Start the server accept loop
-	        echo_server.start_accept();
-
-	        //// Start the ASIO io_service run loop
-	        //server.echo_server.run();
-	    } catch (websocketpp::exception const & e) {
-	        std::cout << e.what() << std::endl;
-	    } catch (...) {
-	        std::cout << "other exception" << std::endl;
-	    }
-
-	}
-
-	void run()
-	{
-		echo_server.run();
-	}
-
-
-	// Define a callback to handle incoming messages
-	void on_message(websocketpp::connection_hdl hdl, WebsocketServer::message_ptr msg)
-	{
-	    std::cout << "on_message called with hdl: " << hdl.lock().get()
-	              << " and message: " << msg->get_payload()
-	              << std::endl;
-
-	    // check for a special command to instruct the server to stop listening so
-	    // it can be cleanly exited.
-	    if (msg->get_payload() == "stop-listening") {
-	        echo_server.stop_listening();
-	        return;
-	    }
-
-	    try {
-	        echo_server.send(hdl, msg->get_payload(), msg->get_opcode());
-	    } catch (const websocketpp::lib::error_code& e) {
-	        std::cout << "Echo failed because: " << e
-	                  << "(" << e.message() << ")" << std::endl;
-	    }
-	}
-
-
-	// Create a server endpoint
-    server echo_server;
-};
-
-WebsocketServer* g_wsserver;
-void wsserver_loop()
-{
-    g_wsserver->run();
-}
 
 int main()
 {
 	g_wsserver = new WebsocketServer();
-
-	//std::thread* wsserver_thread = new std::thread(wsserver_loop);
 	std::thread* wsserver_thread = new std::thread(&WebsocketServer::run, g_wsserver);
+
+	zthread_new (server_task, NULL);
+    zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
+    return 0;
+
+/*
 	wsserver_thread->join();
-	
+*/	
 	//while(1)
 	//{
 	//}
