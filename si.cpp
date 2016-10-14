@@ -55,7 +55,7 @@ std::string string_from_zframe( zframe_t* frame )
 	return std::string( (char*)zframe_data(frame),  zframe_size (frame));
 }
 
-zmsg_t *zmsg_from_param( const Parameter* param, zframe_t **content )
+zmsg_t *zmsg_from_param( const Parameter* param )
 {
 	zmsg_t *m = zmsg_new ();
 

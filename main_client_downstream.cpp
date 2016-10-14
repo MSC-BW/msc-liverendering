@@ -4,7 +4,7 @@
 #include <websocketpp/client.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
 
-
+#include "si.h"
 
 struct WebsocketClient
 {
@@ -76,7 +76,24 @@ void client_loop()
 }
 
 
- 
+// api
+void si_send_message( const std::string& text )
+{
+    int opcode = EOpCode::EMessage;
+    int msg_size = sizeof(int) + text.size()+1;
+    std::vector<char> data(msg_size);
+
+    // set opcode
+    *(int*)(&data[0]) = opcode;
+
+    // copy data to buffer
+    memcpy( &data[0]+sizeof(int), text.c_str(), text.size() );
+
+    // send to wsserver
+    g_wsclient->con->send(std::string(data.begin(), data.end()), websocketpp::frame::opcode::binary);
+}
+
+
 int main()
 {
     g_wsclient = new WebsocketClient();
@@ -91,8 +108,7 @@ int main()
         printf("Enter message:");
         gets(msg);
         g_wsclient->con->send(std::string(msg), websocketpp::frame::opcode::text);
-
-        // 
+        //si_send_message(std::string(msg));
     }
 }
 

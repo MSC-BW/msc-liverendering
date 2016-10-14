@@ -5,6 +5,7 @@
 #include <string.h>
 #include <assert.h>
 #include <iostream>
+#include <mutex>
 
 
 // required for websocket server test
@@ -18,12 +19,89 @@
 #include "si.h"
 
 
+struct Message
+{
+	typedef std::shared_ptr<Message> Ptr;
+
+	Message():m_data(0), m_size(0)
+	{
+	}
+
+	Message(const std::string& data)
+	{
+		m_size = data.size();
+		m_data = malloc(m_size);
+		memcpy( m_data, &data[0], m_size );
+	}
+
+	~Message()
+	{
+		if(m_data)
+			free(m_data);
+	}
+
+	zmsg_t* make_zmsg()
+	{
+		zmsg_t *m = zmsg_new ();
+
+		zframe_t* data = zframe_new (m_data, m_size);
+		std::cout << "make_zmsg:test=" << std::string((const char*)zframe_data(data), zframe_size(data)) << std::endl;
+		zmsg_append( m, &data );
+
+		return m;
+	}
+
+	static Ptr from_string( const std::string& data )
+	{
+		return std::make_shared<Message>(data);
+	}
 
 
+	void *m_data;
+	int m_size;
+};
 
 
+// https://www.justsoftwaresolutions.co.uk/threading/implementing-a-thread-safe-queue-using-condition-variables.html
+// this only works for single consumer, single producer scenarios
+template<typename Data>
+class concurrent_queue
+{
+private:
+    std::queue<Data> the_queue;
+    mutable std::mutex the_mutex;
+public:
+    void push(const Data& data)
+    {
+        std::lock_guard<std::mutex> lock(the_mutex);
+        the_queue.push(data);
+    }
 
+    bool empty() const
+    {
+        std::lock_guard<std::mutex> lock(the_mutex);
+        return the_queue.empty();
+    }
 
+    Data& front()
+    {
+        std::lock_guard<std::mutex> lock(the_mutex);
+        return the_queue.front();
+    }
+    
+    Data const& front() const
+    {
+        std::lock_guard<std::mutex> lock(the_mutex);
+        return the_queue.front();
+    }
+
+    void pop()
+    {
+        std::lock_guard<std::mutex> lock(the_mutex);
+        the_queue.pop();
+    }
+};
+concurrent_queue<Message::Ptr> g_msg; // messages from downstream client
 
 
 
@@ -83,6 +161,7 @@ struct WebsocketServer
 	void on_message(websocketpp::connection_hdl hdl, WebsocketServer::message_ptr msg)
 	{
 		temp_hdl = hdl;
+
 	    std::cout << "on_message called with hdl: " << hdl.lock().get()
 	              << " and message: " << msg->get_payload()
 	              << std::endl;
@@ -95,7 +174,11 @@ struct WebsocketServer
 	        return;
 	    }
 
+	    // put message onto the queue
+	    g_msg.push(Message::from_string(msg->get_payload()));
+
 	    try {
+	    	// send echo
 	        echo_server.send(hdl, msg->get_payload(), msg->get_opcode());
 	    } catch (const websocketpp::lib::error_code& e) {
 	        std::cout << "Echo failed because: " << e
@@ -136,7 +219,7 @@ void *server_task (void *args)
     /*
     //  Launch pool of worker threads, precise number is not critical
     int thread_nbr;
-    for (thread_nbr = 0; thread_nbr < 5; thread_nbr++)
+    for (thread_nbr = 0; thread_nbr < 1; thread_nbr++)
         zthread_fork (ctx, server_worker, NULL);
 
     //  Connect backend to frontend via a proxy
@@ -147,15 +230,20 @@ void *server_task (void *args)
 
 
 
+    ///*
     // test
     {
+    	bool is_connected_to_head = false;
+    	std::string head_id;
+
+
     	int rc = 0;
 
 	    int more;
 	    size_t moresz;
 	    zmq_pollitem_t itemsin [] =
 	    {
-	        { frontend, 0, ZMQ_POLLIN, 0 },
+	        { frontend, 0, ZMQ_POLLIN|ZMQ_POLLOUT, 0 },
 	    };
 	    int num_poll_items = 1;
 	    zmq_pollitem_t itemsout [] =
@@ -181,13 +269,11 @@ void *server_task (void *args)
 	        //  Get the pollout separately because when combining this with pollin it maxes the CPU
 	        //  because pollout shall most of the time return directly.
 	        //  POLLOUT is only checked when frontend and backend sockets are not the same.
-            rc = zmq_poll (&itemsout [0], 1, 0);
-            if (rc < 0)
-                return NULL;
+            //rc = zmq_poll (&itemsout [0], num_poll_items, 0);
+            //if (rc < 0)
+            //    return NULL;
 
-        	
-
-	        //  process messages from frontend client (compute node)
+	        //  process messages from frontend client (compute node) ---
 	        if (state == active &&  itemsin[0].revents & ZMQ_POLLIN)
 	        {
 	        	// now consume message (and forward it to websocket server)
@@ -195,25 +281,76 @@ void *server_task (void *args)
 
 				if(msg != NULL)
 				{
-					std::cout << "received message from client\n";
+					std::cout << "received message from upstream client\n";
+
+					//  The DEALER socket gives us the reply envelope and message
+					zframe_t *identity = zmsg_pop (msg);
+
+					// if this is the first time we see the upstream client...
+					if(!is_connected_to_head)
+					{
+						// ...register upstream client
+						is_connected_to_head = true;
+						head_id = string_from_zframe(identity);
+					}
+
+					zframe_t *content = zmsg_pop (msg);
+					assert (content);
+					zmsg_destroy (&msg);
 
 					// TODO:deal with message and forward it to websocket server
-					std::string text = "image!!!!";
-					g_wsserver->echo_server.send(g_wsserver->temp_hdl, text, websocketpp::frame::opcode::text);
+					//std::string text = "image!!!!";
+					//g_wsserver->echo_server.send(g_wsserver->temp_hdl, text, websocketpp::frame::opcode::text);
+					std::string data( (const char*)zframe_data(content), zframe_size(content) );
+					//g_wsserver->echo_server.send(g_wsserver->temp_hdl, data, websocketpp::frame::opcode::binary);
+					
 
-					zmsg_destroy(&msg);
+					zframe_destroy(&identity);
+					zframe_destroy(&content);
 				}
 	        }
 
-	        // process messages from websocket server (user client)
+	        // process messages from websocket server (user client) ---
 	        //if there is something in the websocket incomming queue
-	        //use mutex to access queue
-	        {
+	        //if(!(itemsin[0].revents & ZMQ_POLLOUT))
+	        //	std::cout << "NO pollout!\n";
+	        //else
+	        //	std::cout << "GOT pollout!\n";
+	        //if(itemsin[0].revents & ZMQ_POLLOUT)
+	        //	std::cout << "GOT pollout!\n";
 
+
+	        //if(!g_msg.empty() && itemsin[0].revents & ZMQ_POLLOUT)
+	        if((itemsin[0].revents & ZMQ_POLLOUT) &&
+	           is_connected_to_head &&
+	           !g_msg.empty())
+	        {
+	        	Message::Ptr msg = g_msg.front();
+	        	g_msg.pop();
+
+	        	// send message to upstream client via zmq
+	        	std::cout << "sending message to upstream client\n";
+
+	        	/*
+	        	int value = 123456;
+
+	        	Parameter param;
+	        	param.m_name = "pos";
+	        	param.m_type = Parameter::EInteger;
+	        	param.m_size = 1;
+	        	param.m_data = &value;
+	        	*/
+
+	        	zframe_t* identity = zframe_from_string(head_id);
+	            //zmsg_t *m = zmsg_from_param(&param);
+	            zmsg_t* m = msg->make_zmsg();
+	            zmsg_prepend(m, &identity);
+	            zmsg_send(&m, frontend);
 	        }
 	    };
 
     }
+    //*/
 
 
 
@@ -250,10 +387,6 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
         	std::cout << "image:" << image << std::endl;
         }
 
-        // receive a message from the render client ---
-        {
-
-        }
 
 
         // receive a message from the user client ---
@@ -274,8 +407,8 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
             //  Sleep for some fraction of a second
             zclock_sleep (randof (1000) + 1);
 
-        	//zframe_send (&identity, worker, ZFRAME_REUSE + ZFRAME_MORE);
-            //zframe_send (&content, worker, ZFRAME_REUSE);
+        	zframe_send (&identity, worker, ZFRAME_REUSE + ZFRAME_MORE);
+            zframe_send (&content, worker, ZFRAME_REUSE);
 
             //zmsg_t *m = zmsg_new ();
             //zmsg_append( m, &identity);
@@ -283,9 +416,9 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
             //zmsg_send(&m, worker);
 
             ///*
-            zmsg_t *m = zmsg_from_param(&param, &content);
-            zmsg_prepend(m, &identity);
-            zmsg_send(&m, worker);
+            //zmsg_t *m = zmsg_from_param(&param);
+            //zmsg_prepend(m, &identity);
+            //zmsg_send(&m, worker);
             //*/
 
         }

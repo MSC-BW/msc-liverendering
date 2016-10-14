@@ -51,15 +51,24 @@ struct Parameter
 
 };
 
+enum EOpCode
+{
+	ENOP = 0,
+	EMessage = 1,
+	ESetParam = 2
+};
 
-
+void execute( EOpCode op, const char* data );
 
 
 // marshalling and unmarshalling for czmq
 #include <czmq.h>
 
+
 zframe_t *zframe_from_string( const std::string string );
 std::string string_from_zframe( zframe_t* frame );
 
-zmsg_t* zmsg_from_param( const Parameter* param, zframe_t **content );
+zmsg_t* zmsg_from_param( const Parameter* param );
 Parameter* param_from_zmsg( zmsg_t* msg );
+
+
