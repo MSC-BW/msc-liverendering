@@ -30,7 +30,7 @@ struct WebsocketClient
         c.set_message_handler(
             [&](websocketpp::connection_hdl, client::message_ptr const& msg)
             {
-                std::cout << "received from server: " << msg->get_payload() <<std::endl;
+                std::cout << "message from upstream: msg=" << msg->get_payload() <<std::endl;
 
                 if(msg->get_payload() == "stop listening")
                     con->close(websocketpp::close::status::normal, "");

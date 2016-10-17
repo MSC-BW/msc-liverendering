@@ -18,7 +18,7 @@ endif ()
 
 
 # proxy-server ====================================
-add_executable(zmq-test-server main_server.cpp si.cpp )
+add_executable(zmq-test-server main_server.cpp )
 set_property(TARGET zmq-test-server PROPERTY CXX_STANDARD 11)
 
 # required to allow including from custom install directory

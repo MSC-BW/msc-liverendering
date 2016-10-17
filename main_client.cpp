@@ -76,7 +76,7 @@ client_task (void *args)
                 // receive message from server
                 zmsg_t *msg = zmsg_recv (client);
 
-                std::cout << "received message !!!!!!!!!!!!!!!!!!!!!\n";
+                //std::cout << "received message !!!!!!!!!!!!!!!!!!!!!\n";
 
                 // note that there is no identity frame here
                 //Parameter* param = param_from_zmsg(msg);
@@ -90,14 +90,14 @@ client_task (void *args)
                 // print message from server
                 //std::cout << "client:received message from server\n";
                 std::string test_str = string_from_zframe(zmsg_last (msg));
-                std::cout << identity << " " << test_str << std::endl;
+                std::cout << "message from downstream: id=" << identity << " msg=" << test_str << std::endl;
                 //zframe_print (zmsg_last (msg), identity);
                 zmsg_destroy (&msg);
             }
         }
 
         // send a request to the server (this would be the rendered image)
-        std::cout << "client:sending request\n";
+        //std::cout << "client:sending request\n";
         std::string image = ">                    <";
         image[counter++%(image.size()-2) + 1] = 'o';
         //zstr_sendf (client, "request #%d", ++request_nbr);

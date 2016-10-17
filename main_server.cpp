@@ -8,15 +8,15 @@
 #include <mutex>
 
 
-// required for websocket server test
+// required for running the websocket server which talks to downstream clients
 #define ASIO_STANDALONE
 #define _WEBSOCKETPP_CPP11_STRICT_ // tells websocketpp that we have a full-featured c++11 compiler...
 #include <websocketpp/server.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
 
 
+// required for talking to upstream client from compute node
 #include <czmq.h>
-#include "si.h"
 
 
 // https://www.justsoftwaresolutions.co.uk/threading/implementing-a-thread-safe-queue-using-condition-variables.html
@@ -72,9 +72,6 @@ concurrent_queue<zmsg_t*> g_msg; // messages from downstream client
 struct WebsocketServer
 {
 	typedef websocketpp::server<websocketpp::config::asio> server;
-	//using websocketpp::lib::placeholders::_1;
-	//using websocketpp::lib::placeholders::_2;
-	//using websocketpp::lib::bind;
 
 	// pull out the type of messages sent by our config
 	typedef server::message_ptr message_ptr;
@@ -111,6 +108,7 @@ struct WebsocketServer
 
 	void run()
 	{
+		std::cout << "running websocket server...\n";
 		echo_server.run();
 	}
 
@@ -120,9 +118,7 @@ struct WebsocketServer
 	{
 		temp_hdl = hdl;
 
-	    std::cout << "on_message called with hdl: " << hdl.lock().get()
-	              << " and message: " << msg->get_payload()
-	              << std::endl;
+	    //std::cout << "on_message called with hdl: " << hdl.lock().get() << " and message: " << msg->get_payload() << std::endl;
 
 	    // check for a special command to instruct the server to stop listening so
 	    // it can be cleanly exited.
@@ -132,7 +128,7 @@ struct WebsocketServer
 	        return;
 	    }
 
-	    // create zmq message and push onto the queue
+	    // create zmq message and push onto the queue of messages to be sent to upstream client
 	    {
 	    	const std::string& data = msg->get_payload();
 
@@ -143,14 +139,12 @@ struct WebsocketServer
 		}
 
 
-	    //g_msg.push(Message::from_string(msg->get_payload()));
 
 	    try {
 	    	// send echo
 	        echo_server.send(hdl, msg->get_payload(), msg->get_opcode());
 	    } catch (const websocketpp::lib::error_code& e) {
-	        std::cout << "Echo failed because: " << e
-	                  << "(" << e.message() << ")" << std::endl;
+	        std::cout << "Echo failed because: " << e << "(" << e.message() << ")" << std::endl;
 	    }
 	}
 
@@ -226,6 +220,7 @@ void *server_task (void *args)
 	        terminated
 	    } state = active;
 
+		std::cout << "listening on frontend socket...\n";
 	    while(1)
 	    {
 	    	// wait for messages from frontend or backend
@@ -233,13 +228,6 @@ void *server_task (void *args)
 		    int rc = zmq_poll (&itemsin[0], num_poll_items, -1);
 		    if (rc < 0)
 		        return NULL;
-
-	        //  Get the pollout separately because when combining this with pollin it maxes the CPU
-	        //  because pollout shall most of the time return directly.
-	        //  POLLOUT is only checked when frontend and backend sockets are not the same.
-            //rc = zmq_poll (&itemsout [0], num_poll_items, 0);
-            //if (rc < 0)
-            //    return NULL;
 
 	        //  process messages from frontend client (compute node) ---
 	        if (state == active &&  itemsin[0].revents & ZMQ_POLLIN)
@@ -249,7 +237,7 @@ void *server_task (void *args)
 
 				if(msg != NULL)
 				{
-					std::cout << "received message from upstream client\n";
+					//std::cout << "received message from upstream client\n";
 
 					//  The DEALER socket gives us the reply envelope and message
 					zframe_t *identity = zmsg_pop (msg);
@@ -259,7 +247,8 @@ void *server_task (void *args)
 					{
 						// ...register upstream client
 						is_connected_to_head = true;
-						head_id = string_from_zframe(identity);
+						// string_From_zframe
+						head_id = std::string( (char*)zframe_data(identity),  zframe_size (identity));
 					}
 
 					zframe_t *content = zmsg_pop (msg);
@@ -278,17 +267,7 @@ void *server_task (void *args)
 				}
 	        }
 
-	        // process messages from websocket server (user client) ---
-	        //if there is something in the websocket incomming queue
-	        //if(!(itemsin[0].revents & ZMQ_POLLOUT))
-	        //	std::cout << "NO pollout!\n";
-	        //else
-	        //	std::cout << "GOT pollout!\n";
-	        //if(itemsin[0].revents & ZMQ_POLLOUT)
-	        //	std::cout << "GOT pollout!\n";
-
-
-	        //if(!g_msg.empty() && itemsin[0].revents & ZMQ_POLLOUT)
+	        // process messages from websocket server (downstream client) ---
 	        if((itemsin[0].revents & ZMQ_POLLOUT) &&
 	           is_connected_to_head &&
 	           !g_msg.empty())
@@ -299,21 +278,10 @@ void *server_task (void *args)
 	        	g_msg.pop();
 
 	        	// send message to upstream client via zmq
-	        	std::cout << "sending message to upstream client\n";
+	        	//std::cout << "sending message to upstream client\n";
 
-	        	/*
-	        	int value = 123456;
-
-	        	Parameter param;
-	        	param.m_name = "pos";
-	        	param.m_type = Parameter::EInteger;
-	        	param.m_size = 1;
-	        	param.m_data = &value;
-	        	*/
-
-	        	zframe_t* identity = zframe_from_string(head_id);
-	            //zmsg_t *m = zmsg_from_param(&param);
-	            //zmsg_t* m = msg->make_zmsg();
+	        	// zframe_from_string
+	        	zframe_t* identity = zframe_new (&head_id[0], head_id.size());
 	            zmsg_prepend(m, &identity);
 	            zmsg_send(&m, frontend);
 	        }
@@ -354,7 +322,7 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
         	int size = zframe_size(content);
 
         	std::string image((char*)zframe_data(content), size);
-        	std::cout << "image:" << image << std::endl;
+        	//std::cout << "image:" << image << std::endl;
         }
 
 
@@ -365,6 +333,7 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
 
         // alternatively produce message from user client
         {
+        	/*
         	int value = 123456;
 
         	Parameter param;
@@ -379,6 +348,7 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
 
         	zframe_send (&identity, worker, ZFRAME_REUSE + ZFRAME_MORE);
             zframe_send (&content, worker, ZFRAME_REUSE);
+            */
 
             //zmsg_t *m = zmsg_new ();
             //zmsg_append( m, &identity);
