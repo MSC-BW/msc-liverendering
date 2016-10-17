@@ -91,6 +91,7 @@ struct WebsocketServer
 	        echo_server.set_message_handler(std::bind(&WebsocketServer::on_message, this, std::placeholders::_1,std::placeholders::_2));
 
 	        // Listen on port 9002
+	        echo_server.set_reuse_addr(true);
 	        echo_server.listen(9002);
 
 	        // Start the server accept loop

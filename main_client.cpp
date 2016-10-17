@@ -1,53 +1,31 @@
 
-//  Hello World client
 #include <zmq.h>
-#include <string.h>
-#include <stdio.h>
-#include <unistd.h>
-
-/*
-int main (void)
-{
-    printf ("Connecting to hello world server...\n");
-    void *context = zmq_ctx_new ();
-    void *requester = zmq_socket (context, ZMQ_REQ);
-    //zmq_connect (requester, "tcp://localhost:5555");
-    zmq_connect (requester, "tcp://193.196.155.56:5555");
-    
-
-
-    int request_nbr;
-    for (request_nbr = 0; request_nbr != 10; request_nbr++) {
-        char buffer [10];
-        printf ("Sending Hello %d...\n", request_nbr);
-        zmq_send (requester, "Hello", 5, 0);
-        zmq_recv (requester, buffer, 10, 0);
-        printf ("Received World %d\n", request_nbr);
-    }
-    zmq_close (requester);
-    zmq_ctx_destroy (context);
-    return 0;
-}
-*/
-
-
-
-
-
 #include <czmq.h>
 #include <iostream>
 
 #include "si.h"
-
-//  This is our client task
-//  It connects to the server, and then sends a request once per second
-//  It collects responses as they arrive, and it prints them out. We will
-//  run several client tasks in parallel, each with a different random ID.
+#include <util/empty_delete.h>
 
 
+struct SimpleScene : public IScene
+{
+    virtual void message( const std::string& msg )
+    {
+        std::cout << "SimpleScene::message: msg="  << msg << std::endl;
+    }
+    virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )
+    {
+        std::cout << "SimpleScene::setAttr: object=" << object_handle << " #attr=" << nattrs << std::endl;
+        // test:
+        std::cout << "value=" << attr_list[0].ptr<float>()[0] << " " << attr_list[0].ptr<float>()[1] << " " << attr_list[0].ptr<float>()[2] << std::endl;
 
-static void *
-client_task (void *args)
+    }
+};
+
+
+SimpleScene g_simpleScene;
+
+static void *client_task (void *args)
 {
     zctx_t *ctx = zctx_new ();
     void *client = zsocket_new (ctx, ZMQ_DEALER);
@@ -64,7 +42,8 @@ client_task (void *args)
     zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
     int request_nbr = 0;
     int counter = 0;
-    while (true) {
+    while (true)
+    {
         //  Tick once per second, pulling in arriving messages
         int centitick;
         for (centitick = 0; centitick < 100; centitick++)
@@ -76,22 +55,26 @@ client_task (void *args)
                 // receive message from server
                 zmsg_t *msg = zmsg_recv (client);
 
-                //std::cout << "received message !!!!!!!!!!!!!!!!!!!!!\n";
-
+                // we expect messages of the following form:
+                //<int: opcode> <binary data chunk>
+                // this will be routed directly to the execute function of our scene interface
                 // note that there is no identity frame here
-                //Parameter* param = param_from_zmsg(msg);
 
-                //int value = *(int*)(param->m_data);
-                //std::cout << "received: " << param->m_name << " type=" << Parameter::str(param->m_type) << " size=" << param->m_size <<  " value=" << value << std::endl;
+                
+                zframe_t* content = zmsg_last (msg);
 
-                // we let the parameter steer our counter
-                //counter = value;
+                // debug prints
+                //std::cout << "received message !!!!!!!!!!!!!!!!!!!!!\n";
+                //std::string test_str = std::string( (char*)zframe_data(content),  zframe_size (content));
+                //std::cout << "message from downstream: id=" << identity << " msg=" << test_str << std::endl;
 
-                // print message from server
-                //std::cout << "client:received message from server\n";
-                std::string test_str = string_from_zframe(zmsg_last (msg));
-                std::cout << "message from downstream: id=" << identity << " msg=" << test_str << std::endl;
-                //zframe_print (zmsg_last (msg), identity);
+
+                // execute the binary chunk with our render server---
+                Command command;
+                command.data = std::shared_ptr<void>((char*)zframe_data(content), empty_delete<void>());
+                command.size = zframe_size (content);
+                execute(&g_simpleScene, command);
+
                 zmsg_destroy (&msg);
             }
         }

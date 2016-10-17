@@ -76,22 +76,7 @@ void client_loop()
 }
 
 
-// api
-void si_send_message( const std::string& text )
-{
-    int opcode = EOpCode::EMessage;
-    int msg_size = sizeof(int) + text.size()+1;
-    std::vector<char> data(msg_size);
-
-    // set opcode
-    *(int*)(&data[0]) = opcode;
-
-    // copy data to buffer
-    memcpy( &data[0]+sizeof(int), text.c_str(), text.size() );
-
-    // send to wsserver
-    g_wsclient->con->send(std::string(data.begin(), data.end()), websocketpp::frame::opcode::binary);
-}
+// this is a websocket client interface to our renderer =================================
 
 
 int main()
@@ -107,8 +92,32 @@ int main()
         // send text messages to server ---
         printf("Enter message:");
         gets(msg);
-        g_wsclient->con->send(std::string(msg), websocketpp::frame::opcode::text);
-        //si_send_message(std::string(msg));
+
+        // send message test
+        /*
+        {
+            Command cmd = message( std::string(msg) );
+            // send to wsserver ---
+            g_wsclient->con->send(cmd.data_alt, websocketpp::frame::opcode::binary);
+        }
+        */
+
+        ///*
+        // setAttr test
+        {
+            Attribute attr("test_attribute", Attribute::EType::EP3f, 1);
+
+            // set attribute value
+            attr.ptr<float>()[0] = 1.0f;
+            attr.ptr<float>()[1] = 2.0f;
+            attr.ptr<float>()[2] = 3.0f;
+
+            Command cmd = setAttr( std::string(msg), &attr, 1 );
+
+            // send to wsserver ---
+            g_wsclient->con->send(cmd.data_alt, websocketpp::frame::opcode::binary);
+        }
+        //*/
     }
 }
 

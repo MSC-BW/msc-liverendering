@@ -1,16 +1,15 @@
 #pragma once
 
-
-// scene interface
-
-
 #include <string>
 #include <cstdlib>
+#include <memory>
+#include <iostream>
+#include <sstream>
 
 
 
 
-struct Parameter
+struct Attribute
 {
 	enum EType
 	{
@@ -19,56 +18,97 @@ struct Parameter
 		EDouble,
 		EInteger,
 		EString,
-		EColor,
-		EPoint,
-		EVector,
-		ENormal,
-		EMatrix44f,
-		EMatrix44d,
+		EC3f, // color
+		EP3f, // point
+		EV3f, // vector
+		EN3f, // normal
+		EM44f,
+		EM44d,
 		EPtr
 	};
 
-	Parameter():m_size(0), m_data(0), m_type(EUndefined), m_is_data_owner(false)
+	Attribute(const std::string& name, 
+			  EType type,
+			  int size ):
+				m_name(name),
+				m_size(size),
+				m_data(malloc(size*element_size(type)), free),
+				m_type(type)
 	{
-
 	}
 
-	~Parameter()
+
+	Attribute():
+		m_name(),
+		m_size(0),
+		m_data(),
+		m_type(EUndefined)
 	{
-		if(m_is_data_owner && (m_data!=0))
-			free(m_data);
 	}
 
-	static std::string str( Parameter::EType type );
-	static int size(Parameter::EType type);
+	~Attribute()
+	{
+	}
+
+	void print()
+	{
+		std::cout << "Attribute:\n";
+		std::cout << "\tname=" << m_name << std::endl;
+		std::cout << "\ttype=" << type_str(m_type) << std::endl;
+		std::cout << "\tsize=" << m_size << std::endl;
+	}
+
+	static std::string type_str( int type );
+	static int element_size(int type); // returns size of a single element in bytes
+
+
+	template<typename T=void>
+	const T* ptr()const
+	{
+		return reinterpret_cast<T*>(m_data.get());
+	}
+
+	template<typename T=void>
+	T* ptr()
+	{
+		return reinterpret_cast<T*>(m_data.get());
+	}
+
+	int memsize()const
+	{
+		return m_size*element_size(m_type);
+	}
 
 
 	std::string m_name;
-	EType m_type;
-	int m_size;
-	void* m_data;
-	bool m_is_data_owner;
-
+	int m_type;
+	int m_size; // number of elements of type m_type (i.e. number of floats, v3fs etc.)
+	std::shared_ptr<void> m_data;
 };
 
-enum EOpCode
+
+
+
+// CLIENT ====================================================
+struct Command
 {
-	ENOP = 0,
-	EMessage = 1,
-	ESetParam = 2
+	std::shared_ptr<void> data;
+	std::string data_alt;
+	int size;
 };
 
-void execute( EOpCode op, const char* data );
+
+Command message( const std::string& text );
+Command setAttr( const std::string& object, const Attribute* attr_list, int nattrs );
 
 
-// marshalling and unmarshalling for czmq
-#include <czmq.h>
+
+// SERVER ====================================================
+struct IScene
+{
+	virtual void message( const std::string& msg )=0;
+	virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )=0;
+};
 
 
-zframe_t *zframe_from_string( const std::string string );
-std::string string_from_zframe( zframe_t* frame );
-
-zmsg_t* zmsg_from_param( const Parameter* param );
-Parameter* param_from_zmsg( zmsg_t* msg );
-
-
+void execute( IScene* si, Command command );
