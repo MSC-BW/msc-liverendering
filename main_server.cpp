@@ -19,49 +19,6 @@
 #include "si.h"
 
 
-struct Message
-{
-	typedef std::shared_ptr<Message> Ptr;
-
-	Message():m_data(0), m_size(0)
-	{
-	}
-
-	Message(const std::string& data)
-	{
-		m_size = data.size();
-		m_data = malloc(m_size);
-		memcpy( m_data, &data[0], m_size );
-	}
-
-	~Message()
-	{
-		if(m_data)
-			free(m_data);
-	}
-
-	zmsg_t* make_zmsg()
-	{
-		zmsg_t *m = zmsg_new ();
-
-		zframe_t* data = zframe_new (m_data, m_size);
-		std::cout << "make_zmsg:test=" << std::string((const char*)zframe_data(data), zframe_size(data)) << std::endl;
-		zmsg_append( m, &data );
-
-		return m;
-	}
-
-	static Ptr from_string( const std::string& data )
-	{
-		return std::make_shared<Message>(data);
-	}
-
-
-	void *m_data;
-	int m_size;
-};
-
-
 // https://www.justsoftwaresolutions.co.uk/threading/implementing-a-thread-safe-queue-using-condition-variables.html
 // this only works for single consumer, single producer scenarios
 template<typename Data>
@@ -101,7 +58,8 @@ public:
         the_queue.pop();
     }
 };
-concurrent_queue<Message::Ptr> g_msg; // messages from downstream client
+
+concurrent_queue<zmsg_t*> g_msg; // messages from downstream client
 
 
 
@@ -174,8 +132,18 @@ struct WebsocketServer
 	        return;
 	    }
 
-	    // put message onto the queue
-	    g_msg.push(Message::from_string(msg->get_payload()));
+	    // create zmq message and push onto the queue
+	    {
+	    	const std::string& data = msg->get_payload();
+
+			zmsg_t *m = zmsg_new ();
+			zframe_t* data_frame = zframe_new ((const char*)&data[0], data.size());
+			zmsg_append( m, &data_frame );
+			g_msg.push(m);
+		}
+
+
+	    //g_msg.push(Message::from_string(msg->get_payload()));
 
 	    try {
 	    	// send echo
@@ -302,7 +270,7 @@ void *server_task (void *args)
 					//std::string text = "image!!!!";
 					//g_wsserver->echo_server.send(g_wsserver->temp_hdl, text, websocketpp::frame::opcode::text);
 					std::string data( (const char*)zframe_data(content), zframe_size(content) );
-					//g_wsserver->echo_server.send(g_wsserver->temp_hdl, data, websocketpp::frame::opcode::binary);
+					g_wsserver->echo_server.send(g_wsserver->temp_hdl, data, websocketpp::frame::opcode::binary);
 					
 
 					zframe_destroy(&identity);
@@ -325,7 +293,9 @@ void *server_task (void *args)
 	           is_connected_to_head &&
 	           !g_msg.empty())
 	        {
-	        	Message::Ptr msg = g_msg.front();
+	        	//Message::Ptr msg = g_msg.front();
+	        	//g_msg.pop();
+	        	zmsg_t* m = g_msg.front();
 	        	g_msg.pop();
 
 	        	// send message to upstream client via zmq
@@ -343,7 +313,7 @@ void *server_task (void *args)
 
 	        	zframe_t* identity = zframe_from_string(head_id);
 	            //zmsg_t *m = zmsg_from_param(&param);
-	            zmsg_t* m = msg->make_zmsg();
+	            //zmsg_t* m = msg->make_zmsg();
 	            zmsg_prepend(m, &identity);
 	            zmsg_send(&m, frontend);
 	        }
