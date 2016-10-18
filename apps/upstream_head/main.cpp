@@ -38,7 +38,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    zsocket_connect (client, "tcp://193.196.155.53:5570");
+    zsocket_connect (client, "tcp://193.196.155.55:5570");
 
     zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
     int request_nbr = 0;

@@ -1,10 +1,19 @@
 
 #define ASIO_STANDALONE
 #define _WEBSOCKETPP_CPP11_STRICT_ // tells websocketpp that we have a full-featured c++11 compiler...
+
+//windows 2013 has not noexcept and constexpr
+#define _WEBSOCKETPP_NOEXCEPT_TOKEN_
+#define _WEBSOCKETPP_CONSTEXPR_TOKEN_
+
 #include <websocketpp/client.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
 
 #include <rsi/rsi.h>
+
+
+
+
 
 struct WebsocketClient
 {
@@ -15,7 +24,9 @@ struct WebsocketClient
         std::string const url = "ws://localhost:9002/";
      
         // disable log output
-        c.clear_access_channels(websocketpp::log::alevel::all);
+        c.set_access_channels(websocketpp::log::alevel::all);
+        c.clear_access_channels(websocketpp::log::alevel::frame_payload);
+        //c.clear_access_channels(websocketpp::log::alevel::all);
      
         c.init_asio(&ios);
      
