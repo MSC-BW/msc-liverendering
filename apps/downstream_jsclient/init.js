@@ -258,15 +258,34 @@ window.onload = function()
       exampleSocket.send(JSON.stringify(message));
       */
 
+      // 1=lmb
+      // 2=rmb
+      // 4=mmb
+      if( buttons == 1)
+      {
+        var attr_list = new Array();
+        var attr = new Attribute( "position", Attribute.EType.EP3f, 1 );
+        attr.array()[0] = mouseX;
+        attr.array()[1] = mouseY;
+        attr.array()[2] = 0.0;
+        attr_list.push(attr);
+        var command = setAttr( "sphere", attr_list );
+        exampleSocket.send(command);      }else
+      if( buttons == 4)
+      {
+      }else
+      if( buttons == 2)
+      {
+        var attr_list = new Array();
+        var attr = new Attribute( "radius", Attribute.EType.EFloat, 1 );
+        attr.array()[0] = mouseX;
+        attr_list.push(attr);
+        var command = setAttr( "sphere", attr_list );
+        exampleSocket.send(command);
+      }
 
-      var attr_list = new Array();
-      var attr = new Attribute( "position", Attribute.EType.EP3f, 1 );
-      attr.array()[0] = mouseX;
-      attr.array()[1] = mouseY;
-      attr.array()[2] = 0.0;
-      attr_list.push(attr);
-      var command = setAttr( "sphere", attr_list );
-      exampleSocket.send(command);
+
+
 
       renderview.oldMouseX = mouseX;
       renderview.oldMouseY = mouseY;

@@ -27,6 +27,7 @@ struct SimpleRenderer : public IScene
         //m_cy = 0.5 - 0.3*std::sin(m_t);
         m_cx = 256;
         m_cy = 256;
+        m_radius = 20.0;
 
     }
 
@@ -37,12 +38,33 @@ struct SimpleRenderer : public IScene
     }
     virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )override
     {
-        std::cout << "SimpleScene::setAttr: object=" << object_handle << " #attr=" << nattrs << std::endl;
-        // test:
-        std::cout << "value=" << attr_list[0].ptr<float>()[0] << " " << attr_list[0].ptr<float>()[1] << " " << attr_list[0].ptr<float>()[2] << std::endl;
+        for( int i=0;i<nattrs;++i )
+        {
+            const Attribute& attr = attr_list[i];
+            std::cout << "SimpleScene::setAttr: object=" << object_handle << " attr=" << attr.m_name;
 
-        m_cx = attr_list[0].ptr<float>()[0];
-        m_cy = attr_list[0].ptr<float>()[1];
+            switch(attr.m_type)
+            {
+                case Attribute::EType::EFloat:
+                    std::cout << " value=" << attr.ptr<float>()[0] << std::endl;
+                    break;
+                case Attribute::EType::EP3f:
+                    std::cout << " value=" << attr.ptr<float>()[0] << " " << attr.ptr<float>()[1] << " " << attr.ptr<float>()[2] << std::endl;
+                    break;
+            }
+
+
+            if( attr.m_name == "position" )
+            {
+                m_cx = attr.ptr<float>()[0];
+                m_cy = attr.ptr<float>()[1];            
+            }else
+            if( attr.m_name == "radius" )
+            {
+                m_radius = attr.ptr<float>()[0];            
+            }
+
+        }
     }
 
 
@@ -55,6 +77,7 @@ struct SimpleRenderer : public IScene
 
     double m_t;
     double m_cx, m_cy;
+    double m_radius;
 
 
     void advance()
@@ -70,7 +93,7 @@ struct SimpleRenderer : public IScene
                 double x2 = x-m_cx;
                 double y2 = y-m_cy;
                 double d = std::sqrt( x2*x2+y2*y2 );
-                if( d < 20.0 )
+                if( d < m_radius )
                 {
                     m_rgb_data[ y*m_width*3+x*3 + 0 ] = 1.0;
                     m_rgb_data[ y*m_width*3+x*3 + 1 ] = 1.0;
@@ -91,7 +114,6 @@ private:
 };
 
 
-//SimpleScene::Ptr g_simpleScene;
 SimpleRenderer g_simpleRenderer;
 
 static void *client_task (void *args)
@@ -106,7 +128,9 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    zsocket_connect (client, "tcp://193.196.155.54:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.56:5570");
+    if(!result)
+        std::cout << "connected to server...\n";
 
     zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
     int request_nbr = 0;
@@ -117,7 +141,7 @@ static void *client_task (void *args)
         int centitick;
         //int count = 100;
         int count = 50;
-        //for (centitick = 0; centitick < count; centitick++)
+        for (centitick = 0; centitick < count; centitick++)
         {
             // ??
             //zmq_poll (items, 1, 10 * ZMQ_POLL_MSEC);
