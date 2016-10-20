@@ -13,24 +13,8 @@
 #include <cmath>
 #include <algorithm>
 
-struct SimpleScene : public IScene
-{
-    virtual void message( const std::string& msg )
-    {
-        std::cout << "SimpleScene::message: msg="  << msg << std::endl;
-    }
-    virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )
-    {
-        std::cout << "SimpleScene::setAttr: object=" << object_handle << " #attr=" << nattrs << std::endl;
-        // test:
-        std::cout << "value=" << attr_list[0].ptr<float>()[0] << " " << attr_list[0].ptr<float>()[1] << " " << attr_list[0].ptr<float>()[2] << std::endl;
 
-    }
-};
-
-
-
-struct SimpleRenderer
+struct SimpleRenderer : public IScene
 {
     SimpleRenderer()
     {
@@ -45,6 +29,24 @@ struct SimpleRenderer
         m_cy = 256;
 
     }
+
+    // IScene implementation ------------------------
+    virtual void message( const std::string& msg )override
+    {
+        std::cout << "SimpleScene::message: msg="  << msg << std::endl;
+    }
+    virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )override
+    {
+        std::cout << "SimpleScene::setAttr: object=" << object_handle << " #attr=" << nattrs << std::endl;
+        // test:
+        std::cout << "value=" << attr_list[0].ptr<float>()[0] << " " << attr_list[0].ptr<float>()[1] << " " << attr_list[0].ptr<float>()[2] << std::endl;
+
+        m_cx = attr_list[0].ptr<float>()[0];
+        m_cy = attr_list[0].ptr<float>()[1];
+    }
+
+
+
 
     int m_width;
     int m_height;
@@ -89,7 +91,7 @@ private:
 };
 
 
-SimpleScene g_simpleScene;
+//SimpleScene::Ptr g_simpleScene;
 SimpleRenderer g_simpleRenderer;
 
 static void *client_task (void *args)
@@ -113,10 +115,13 @@ static void *client_task (void *args)
     {
         //  Tick once per second, pulling in arriving messages
         int centitick;
-        for (centitick = 0; centitick < 100; centitick++)
+        //int count = 100;
+        int count = 50;
+        //for (centitick = 0; centitick < count; centitick++)
         {
             // ??
-            zmq_poll (items, 1, 10 * ZMQ_POLL_MSEC);
+            //zmq_poll (items, 1, 10 * ZMQ_POLL_MSEC);
+            zmq_poll (items, 1, 0);
             if (items [0].revents & ZMQ_POLLIN)
             {
                 // receive message from server
@@ -140,7 +145,8 @@ static void *client_task (void *args)
                 Command command;
                 command.data = std::shared_ptr<void>((char*)zframe_data(content), empty_delete<void>());
                 command.size = zframe_size (content);
-                execute(&g_simpleScene, command);
+                //execute(&g_simpleScene, command);
+                execute(&g_simpleRenderer, command);
 
                 zmsg_destroy (&msg);
             }
@@ -153,8 +159,10 @@ static void *client_task (void *args)
         //zstr_sendf (client, image.c_str());
 
 
-        // access rendered image, convert to ldr and compress to jpeg
+        // render image 
+        g_simpleRenderer.advance();
 
+        // access rendered image, convert to ldr and compress to jpeg
         {
             int xres, yres;
             float* data_hdr = g_simpleRenderer.getRGBData(xres, yres);
