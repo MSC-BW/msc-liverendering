@@ -6,7 +6,12 @@
 #include <rsi/rsi.h>
 
 #include "empty_delete.h"
+#include "jpeg.h"
 
+// required by renderer
+#include <vector>
+#include <cmath>
+#include <algorithm>
 
 struct SimpleScene : public IScene
 {
@@ -24,7 +29,68 @@ struct SimpleScene : public IScene
 };
 
 
+
+struct SimpleRenderer
+{
+    SimpleRenderer()
+    {
+        m_width = 512;
+        m_height = 512;
+        m_rgb_data = std::vector<float>( m_width*m_height*3, 0 );
+
+        m_t = 0.0;
+        //m_cx = 0.5 + 0.3*std::cos(m_t);
+        //m_cy = 0.5 - 0.3*std::sin(m_t);
+        m_cx = 256;
+        m_cy = 256;
+
+    }
+
+    int m_width;
+    int m_height;
+    std::vector<float> m_rgb_data;
+
+
+    double m_t;
+    double m_cx, m_cy;
+
+
+    void advance()
+    {
+        std::fill(m_rgb_data.begin(), m_rgb_data.end(), 0);
+
+        m_t += 0.1;
+
+        // do some shit
+        for( int y=0;y<m_height;++y )
+            for( int x=0;x<m_width;++x )
+            {
+                double x2 = x-m_cx;
+                double y2 = y-m_cy;
+                double d = std::sqrt( x2*x2+y2*y2 );
+                if( d < 20.0 )
+                {
+                    m_rgb_data[ y*m_width*3+x*3 + 0 ] = 1.0;
+                    m_rgb_data[ y*m_width*3+x*3 + 1 ] = 1.0;
+                    m_rgb_data[ y*m_width*3+x*3 + 2 ] = 1.0;
+                }
+            }
+    }
+
+    float *getRGBData( int& width, int& height )
+    {
+        width = this->m_width;
+        height = this->m_height;
+        return &m_rgb_data[0];
+    }
+
+private:
+
+};
+
+
 SimpleScene g_simpleScene;
+SimpleRenderer g_simpleRenderer;
 
 static void *client_task (void *args)
 {
@@ -38,7 +104,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    zsocket_connect (client, "tcp://193.196.155.55:5570");
+    zsocket_connect (client, "tcp://193.196.155.54:5570");
 
     zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
     int request_nbr = 0;
@@ -84,8 +150,39 @@ static void *client_task (void *args)
         //std::cout << "client:sending request\n";
         std::string image = ">                    <";
         image[counter++%(image.size()-2) + 1] = 'o';
-        //zstr_sendf (client, "request #%d", ++request_nbr);
-        zstr_sendf (client, image.c_str());
+        //zstr_sendf (client, image.c_str());
+
+
+        // access rendered image, convert to ldr and compress to jpeg
+
+        {
+            int xres, yres;
+            float* data_hdr = g_simpleRenderer.getRGBData(xres, yres);
+            int numPixels = xres*yres;
+            std::vector<unsigned char> data_ldr( numPixels*3 );
+
+            std::transform( data_hdr, data_hdr + numPixels*3,
+                            data_ldr.begin(),
+                [](float value_linear)
+                {
+                    float value_srgb = 0;
+                    if (value_linear <= 0.0031308f)
+                        value_srgb = 12.92f * value_linear;
+                    else
+                        value_srgb = (1.0f + 0.055f)*std::pow(value_linear, 1.0f/2.4f) -  0.055f;
+
+                    return (unsigned char)(std::max( 0.0, std::min(255.0, value_srgb*255.0) ));
+                });
+
+            //write_jpeg_to_file( "test.jpg", xres, yres, &data_ldr[0] );
+            write_jpeg_to_memory( xres, yres, &data_ldr[0], image );
+
+            zmsg_t* msg = zmsg_new();
+            zframe_t* frame = zframe_new(&image[0], image.size());
+            zmsg_append( msg, &frame );
+            zmsg_send( &msg, client );
+        }
+
     }
     zctx_destroy (&ctx);
     return NULL;
@@ -95,6 +192,9 @@ static void *client_task (void *args)
 
 int main (void)
 {
+    // render image
+    g_simpleRenderer.advance();
+
     zthread_new (client_task, NULL);
     zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
     return 0;

@@ -3,13 +3,15 @@
 #define _WEBSOCKETPP_CPP11_STRICT_ // tells websocketpp that we have a full-featured c++11 compiler...
 
 //windows 2013 has not noexcept and constexpr
-#define _WEBSOCKETPP_NOEXCEPT_TOKEN_
-#define _WEBSOCKETPP_CONSTEXPR_TOKEN_
+//#define _WEBSOCKETPP_NOEXCEPT_TOKEN_
+//#define _WEBSOCKETPP_CONSTEXPR_TOKEN_
 
 #include <websocketpp/client.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
 
+#include <fstream>
 #include <rsi/rsi.h>
+#include "jpeg.h"
 
 
 
@@ -35,13 +37,22 @@ struct WebsocketClient
         c.set_open_handler(
             [&](websocketpp::connection_hdl) {
                 std::cout << "connected" << std::endl;
-                con->send(std::string("hello"), websocketpp::frame::opcode::text);
+                //con->send(std::string("hello"), websocketpp::frame::opcode::text);
             });
 
         c.set_message_handler(
             [&](websocketpp::connection_hdl, client::message_ptr const& msg)
             {
-                std::cout << "message from upstream: msg=" << msg->get_payload() <<std::endl;
+				const std::string& payload = msg->get_payload();
+                //std::cout << "message from upstream: msg=" << msg->get_payload() <<std::endl;
+				std::cout << "message from upstream: msg=" << payload.size() << std::endl;
+
+				// we expect a jpeg image. write it to file
+				{
+					std::string filename = "test.jpg";
+					std::ofstream out( filename.c_str(), std::ios::out | std::ios::binary );
+					out.write( &payload[0], payload.size() );
+				}
 
                 if(msg->get_payload() == "stop listening")
                     con->close(websocketpp::close::status::normal, "");

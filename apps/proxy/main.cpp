@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <iostream>
 #include <mutex>
+#include <vector>
 
 
 // required for running the websocket server which talks to downstream clients
@@ -67,7 +68,12 @@ concurrent_queue<zmsg_t*> g_msg; // messages from downstream client
 
 
 
-
+// required to test connection handles for validity
+// see http://stackoverflow.com/questions/26913743/can-an-expired-weak-ptr-be-distinguished-from-an-uninitialized-one
+template <typename T>
+bool PointsToValidOrExpiredObject(const std::weak_ptr<T>& w) {
+    return w.owner_before(std::weak_ptr<T>{}) || std::weak_ptr<T>{}.owner_before(w);
+}
 
 
 struct WebsocketServer
@@ -90,6 +96,8 @@ struct WebsocketServer
 
 	        // Register our message handler
 	        echo_server.set_message_handler(std::bind(&WebsocketServer::on_message, this, std::placeholders::_1,std::placeholders::_2));
+	        echo_server.set_validate_handler(std::bind(&WebsocketServer::on_validate, this, std::placeholders::_1));
+	        echo_server.set_open_handler(bind(&WebsocketServer::on_open,this,std::placeholders::_1));
 
 	        // Listen on port 9002
 	        echo_server.set_reuse_addr(true);
@@ -114,12 +122,53 @@ struct WebsocketServer
 		echo_server.run();
 	}
 
+    void on_open(websocketpp::connection_hdl hdl)
+    {
+		std::cout << "downstream client connected..." << std::endl;std::flush(std::cout);
+		connected_client = hdl;
+    }
+ 	
+
+	bool on_validate(websocketpp::connection_hdl hdl)
+	{
+    	std::cout << "downstream client connection attempt..." << std::endl;std::flush(std::cout);
+
+    	// we currently only allow one single client to be connected
+    	if(PointsToValidOrExpiredObject(connected_client))
+    		return false;
+    	
+		/*
+		//std::cout << "on_validate\n";std::flush(std::cout);
+		websocketpp::server<websocketpp::config::asio>::connection_ptr con = server.get_con_from_hdl(hdl);
+		websocketpp::uri_ptr uri = con->get_uri();
+		std::string query = uri->get_query(); // returns empty string if no query string set.
+		//std::cout << "WebsocketServer::on_validate querystring=" << query << std::endl;
+		std::string id = "";
+		if (!query.empty())
+		{
+			// Split the query parameter string here, if desired.
+			// We assume we extracted a string called 'id' here.
+			id = "test";
+			std::cout << "warning: id is hardcoded:" << id << std::endl;
+		}
+		else
+		{
+			// Reject if no query parameter provided, for example.
+			return false;
+		}
+
+		websocketsLock.lock();
+		g_id_to_socket.insert(std::pair<std::string, websocketpp::connection_hdl>(id, hdl));
+		g_socket_to_id.insert(std::pair<websocketpp::connection_hdl, std::string>(hdl, id));
+		websocketsLock.unlock();
+		*/
+
+		return true;
+	}
 
 	// Define a callback to handle incoming messages
 	void on_message(websocketpp::connection_hdl hdl, WebsocketServer::message_ptr msg)
 	{
-		temp_hdl = hdl;
-
 	    //std::cout << "on_message called with hdl: " << hdl.lock().get() << " and message: " << msg->get_payload() << std::endl;
 
 	    // check for a special command to instruct the server to stop listening so
@@ -150,10 +199,15 @@ struct WebsocketServer
 	    }
 	}
 
+	void broadcast( const std::string& data, websocketpp::frame::opcode::value opcode )
+	{
+		if(PointsToValidOrExpiredObject(connected_client))
+			echo_server.send(connected_client, data, opcode);
+	}
 
 	// Create a server endpoint
     server echo_server;
-    websocketpp::connection_hdl temp_hdl;
+    websocketpp::connection_hdl connected_client; // will be extended as soon as we allow more than one client
 };
 WebsocketServer* g_wsserver;
 
@@ -251,6 +305,8 @@ void *server_task (void *args)
 						is_connected_to_head = true;
 						// string_From_zframe
 						head_id = std::string( (char*)zframe_data(identity),  zframe_size (identity));
+						// log
+						std::cout << "upstream client connected (id=" << head_id << ")..." << std::endl;
 					}
 
 					zframe_t *content = zmsg_pop (msg);
@@ -261,7 +317,8 @@ void *server_task (void *args)
 					//std::string text = "image!!!!";
 					//g_wsserver->echo_server.send(g_wsserver->temp_hdl, text, websocketpp::frame::opcode::text);
 					std::string data( (const char*)zframe_data(content), zframe_size(content) );
-					g_wsserver->echo_server.send(g_wsserver->temp_hdl, data, websocketpp::frame::opcode::binary);
+					g_wsserver->broadcast(data, websocketpp::frame::opcode::binary);
+					
 					
 
 					zframe_destroy(&identity);
