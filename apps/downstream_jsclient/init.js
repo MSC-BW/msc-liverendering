@@ -270,7 +270,8 @@ window.onload = function()
         attr.array()[2] = 0.0;
         attr_list.push(attr);
         var command = setAttr( "sphere", attr_list );
-        exampleSocket.send(command);      }else
+        exampleSocket.send(command);
+      }else
       if( buttons == 4)
       {
       }else

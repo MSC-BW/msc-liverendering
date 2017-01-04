@@ -128,7 +128,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    int result = zsocket_connect (client, "tcp://193.196.155.56:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.54:5570");
     if(!result)
         std::cout << "connected to server...\n";
 
