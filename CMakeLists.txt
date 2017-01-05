@@ -7,7 +7,7 @@ option(BUILD_UPSTREAM_HEAD "build upstream client" OFF)
 option(BUILD_DOWNSTREAM_WSCLIENT "build downstream websocket client" OFF)
 
 
-if( ${BUILD_PROXY} AND ${BUILD_UPSTREAM_HEAD} )
+if( ${BUILD_PROXY} OR ${BUILD_UPSTREAM_HEAD} )
 	# required to allow cmake to find findczmq.cmake
 	list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 	find_package(czmq REQUIRED)

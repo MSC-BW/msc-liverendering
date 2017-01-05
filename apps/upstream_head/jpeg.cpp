@@ -42,6 +42,7 @@ void write_jpeg_to_file( const char* filename, int width, int height, const unsi
 	fclose(outfile);
 }
 
+
 // expecting 8bit per channel
 // we write to std::string because this is what websocketpp uses for binary blobs...
 void write_jpeg_to_memory( int width, int height, const unsigned char* rgb_data, std::string& output )

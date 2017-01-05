@@ -4,6 +4,8 @@
 find_package(JPEG)
 if (JPEG_FOUND)
     message("-- Found jpeg version ${JPEG_VERSION}: ${JPEG_INCLUDE_DIR}")
+    message( "JPEG_INCLUDE_DIR=${JPEG_INCLUDE_DIR}" )
+    message( "JPEG_LIBRARIES=${JPEG_LIBRARIES}" )
 else ()
     message(FATAL_ERROR "jpeg not found")
 endif ()

@@ -28,13 +28,6 @@ class RenderView
 
     this.oldMouseX = 0;
     this.oldMouseY = 0;
-/*
-    this.azimuth = 0.0;
-    this.elevation = 0.0;
-    this.distance = 4.0;
-    this.lookat = vec3.fromValues(0.0, 0.0, 0.0);
-    this.camToWorld = mat4.create();
-*/
 
     this.onMouseDown = this.onMouseDown.bind(this)
     this.onMouseMove = this.onMouseMove.bind(this)
@@ -111,6 +104,38 @@ class RenderView
 }
 
 
+
+class ArcBall
+{
+	constructor()
+	{
+		this.azimuth = 0.0;
+		this.elevation = 0.0;
+		this.distance = 4.0;
+		this.lookat = vec3.fromValues(0.0, 0.0, 0.0);
+		//this.lookat = vec3.fromValues(1.0, 2.0, 3.0);
+		this.localToWorld = mat4.create();
+
+		this.build();
+	}
+
+	build()
+	{
+		mat4.identity(this.localToWorld);
+		mat4.translate(this.localToWorld, this.localToWorld, this.lookat);
+		mat4.rotateY(this.localToWorld, this.localToWorld, this.azimuth*Math.PI/180.0);
+		mat4.rotateX(this.localToWorld, this.localToWorld, this.elevation*Math.PI/180.0);
+		mat4.translate(this.localToWorld, this.localToWorld, vec3.fromValues(0.0, 0.0, -this.distance));
+	}
+
+	getLocalToWorld()
+	{
+		return this.localToWorld;
+	}
+}
+
+
+
 // disable context menus....
 document.oncontextmenu = function()
 {
@@ -173,6 +198,7 @@ window.onload = function()
 
   // runs -----------
   var renderview = new RenderView(512, 512);
+  var arcball = new ArcBall();
   document.body.appendChild(renderview.canvas);
 
   // load image from websocket
@@ -192,15 +218,15 @@ window.onload = function()
     }
 
 
-    renderview.mouseMoveCallback = function(event)
-    {
-      // getting mouse position correctly 
-      var bRect = renderview.canvas.getBoundingClientRect();
-      var mouseX = (event.clientX - bRect.left)*(renderview.canvas.width/bRect.width);
-      var mouseY = (event.clientY - bRect.top)*(renderview.canvas.height/bRect.height);
-      var buttons = event.buttons || event.which;
-      var dx = mouseX - renderview.oldMouseX;
-      var dy = mouseY - renderview.oldMouseY;
+	renderview.mouseMoveCallback = function(event)
+	{
+		// getting mouse position correctly 
+		var bRect = renderview.canvas.getBoundingClientRect();
+		var mouseX = (event.clientX - bRect.left)*(renderview.canvas.width/bRect.width);
+		var mouseY = (event.clientY - bRect.top)*(renderview.canvas.height/bRect.height);
+		var buttons = event.buttons || event.which;
+		var dx = mouseX - renderview.oldMouseX;
+		var dy = mouseY - renderview.oldMouseY;
 
       //console.log("mouseMoveCallback");
       //console.log(mouseX);
@@ -257,39 +283,99 @@ window.onload = function()
       var message = {command:"set", properties:{camToWorld:mat4.str(canvas.camToWorld)}};
       exampleSocket.send(JSON.stringify(message));
       */
+      	var updateView = false;
 
-      // 1=lmb
-      // 2=rmb
-      // 4=mmb
-      if( buttons == 1)
-      {
-        var attr_list = new Array();
-        var attr = new Attribute( "position", Attribute.EType.EP3f, 1 );
-        attr.array()[0] = mouseX;
-        attr.array()[1] = mouseY;
-        attr.array()[2] = 0.0;
-        attr_list.push(attr);
-        var command = setAttr( "sphere", attr_list );
-        exampleSocket.send(command);
-      }else
-      if( buttons == 4)
-      {
-      }else
-      if( buttons == 2)
-      {
-        var attr_list = new Array();
-        var attr = new Attribute( "radius", Attribute.EType.EFloat, 1 );
-        attr.array()[0] = mouseX;
-        attr_list.push(attr);
-        var command = setAttr( "sphere", attr_list );
-        exampleSocket.send(command);
-      }
+		// 1=lmb
+		// 2=rmb
+		// 4=mmb
+		if( buttons == 1)
+		{
+			// left mouse button pressed
+			/*
+			var attr_list = new Array();
+			var attr = new Attribute( "position", Attribute.EType.EP3f, 1 );
+			attr.array()[0] = mouseX;
+			attr.array()[1] = mouseY;
+			attr.array()[2] = 0.0;
+			attr_list.push(attr);
+			var command = setAttr( "sphere", attr_list );
+			exampleSocket.send(command);
+			*/
+			// rotate
+			arcball.elevation += dy;
+			arcball.azimuth += -dx;
+			arcball.build();
+			updateView = true;
+		}else
+		if( buttons == 4)
+		{
+			var scale = 1.0;
+			// middle mouse button pressed
+			xform = arcball.getLocalToWorld();
+			var right = vec3.fromValues(arcball.localToWorld[0]*scale*dx, arcball.localToWorld[1]*scale*dx, arcball.localToWorld[2]*scale*dx);
+			var up = vec3.fromValues(arcball.localToWorld[4]*scale*dy, arcball.localToWorld[5]*scale*dy, arcball.localToWorld[6]*scale*dy);
+			var dir = vec3.fromValues(arcball.localToWorld[8]*scale, arcball.localToWorld[9]*scale, arcball.localToWorld[10]*scale);
+
+			vec3.add( arcball.lookat, arcball.lookat, up);
+			vec3.add( arcball.lookat, arcball.lookat, right);
+			arcball.build();
+			updateView = true;
+		}else
+		if( buttons == 2)
+		{
+			// right mouse button pressed
+			/*
+			var attr_list = new Array();
+			var attr = new Attribute( "radius", Attribute.EType.EFloat, 1 );
+			attr.array()[0] = mouseX;
+			attr_list.push(attr);
+			var command = setAttr( "sphere", attr_list );
+			exampleSocket.send(command);
+			*/
+
+			// zoom
+			var zoom_sign = -1.0; //
+			var scale = 0.005;
+			//var scale = 1.0;
+			arcball.distance += zoom_sign*dx*arcball.distance*scale;
+			arcball.build();
+			updateView = true;
+		}
+
+		if(updateView)
+		{
+			xform = arcball.getLocalToWorld();
+
+			var attr_list = new Array();
+			var attr = new Attribute( "xform", Attribute.EType.EM44f, 1 );
+			for( i=0;i<16;++i )
+				attr.array()[i] = xform[i];
+
+			attr_list.push(attr);
+			var command = setAttr( "camera", attr_list );
+			exampleSocket.send(command);			
+		}
+
+/*
+		xform = arcball.getLocalToWorld();
+		var pos = vec3.fromValues(xform[12], xform[13], xform[14]);
+    	console.log("pos=", pos[0], pos[1], pos[2]);
+
+    	var dir = vec3.create();
+    	vec3.sub( dir, arcball.lookat, pos );
+    	vec3.normalize(dir, dir);
+    	console.log("dir=", dir[0], dir[1], dir[2]);
+
+    	//console.log( "localToWorld=", mat4.str(arcball.localToWorld) );
+    	console.log( "localToWorld=", arcball.localToWorld[0], arcball.localToWorld[1], arcball.localToWorld[2], arcball.localToWorld[3]);
+    	console.log( "             ", arcball.localToWorld[4], arcball.localToWorld[5], arcball.localToWorld[6], arcball.localToWorld[7]);
+    	console.log( "             ", arcball.localToWorld[8], arcball.localToWorld[9], arcball.localToWorld[10], arcball.localToWorld[11]);
+    	console.log( "             ", arcball.localToWorld[12], arcball.localToWorld[13], arcball.localToWorld[14], arcball.localToWorld[15]);
+*/
 
 
-
-
-      renderview.oldMouseX = mouseX;
-      renderview.oldMouseY = mouseY;
+		renderview.oldMouseX = mouseX;
+		renderview.oldMouseY = mouseY;
     }
   }catch(e)
   {
