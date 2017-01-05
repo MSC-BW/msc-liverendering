@@ -8,6 +8,7 @@
 #cd $PBS_O_WORKDIR
 cd /zhome/academic/HLRS/zmc/zmcdkoer/ospr/ospray-test-build
 
+# do something
 module swap PrgEnv-cray PrgEnv-gnu
 module swap gcc/6.1.0 gcc/4.9.3
 module load numlib/intel/tbb

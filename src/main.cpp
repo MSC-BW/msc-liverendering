@@ -23,6 +23,16 @@
  *   cl ..\..\apps\ospTutorial.cpp /EHsc -I ..\..\ospray\include -I ..\.. -I ..\..\ospray\embree\common ospray.lib
  */
 
+#include <zmq.h>
+#include <czmq.h>
+#include <iostream>
+
+#include <rsi/rsi.h>
+
+#include <util/empty_delete.h>
+#include <util/jpeg.h>
+
+
 #include <stdint.h>
 #include <stdio.h>
 #ifdef _WIN32
@@ -38,181 +48,180 @@
 #undef PING
 
 #include <util/timer.h>
-
-
-
-
-
-#include <rserver/RenderServer.h>
-#include <jsmn/jsmn_util.h>
-
-
-
-struct OSPRayRenderer : public ProgressiveRendererInterface
-{
-	int m_resx, m_resy;
-
-
-	OSPRayRenderer() : ProgressiveRendererInterface(),
-						m_doReset(false)
-	{
-
-	}
-
-	//Scene::Ptr m_scene;
-	ProgressCallback m_progress_cb;
-
-
-	void start()
-	{
-
-	}
-
-
-	virtual void setProgressCallback(ProgressCallback callback)override
-	{
-		m_progress_cb = callback;
-	}
-
-
-	virtual void getImageResolution(int& width, int& height)override
-	{
-		width = m_resx;
-		height = m_resy;
-	}
-
-	/*
-	virtual void copyRGBData( float *rgb_data )override
-	{
-	std::lock_guard<std::mutex> lock(m_renderer_access_lock);
-
-	// convert gray channel to rgb color
-	// TODO: render rgb
-	int width = RenderThreadInfo::g.xres;
-	int height = RenderThreadInfo::g.yres;
-	float* ptr = rgb_data;
-	for( int i=0;i<width*height;++i )
-	{
-	  *ptr++ = RenderThreadInfo::g.result_f[i];
-	  *ptr++ = RenderThreadInfo::g.result_f[i];
-	  *ptr++ = RenderThreadInfo::g.result_f[i];
-	}
-	}
-	*/
-
-	//virtual void copyRGBData( unsigned char* rgb_data )
-	virtual void copyRGBData( unsigned char* rgb_data, int& resx, int& resy )
-	{
-		std::lock_guard<std::mutex> lock(m_renderer_access_lock);
-
-		/*
-		// convert gray channel to rgb color and uchar
-		// TODO: render rgb
-		int width = m_xres;
-		int height = m_yres;
-		unsigned char* ptr = rgb_data;
-		for( int i=0;i<width*height;++i )
-		{
-		  Color3f val_rgb = Color3f(RenderThreadInfo::g.result_f[i]).toSRGB();
-		  *ptr++ = std::max(0, std::min( 255, int(val_rgb.r() * 255.0)));
-		  *ptr++ = std::max(0, std::min( 255, int(val_rgb.g() * 255.0)));
-		  *ptr++ = std::max(0, std::min( 255, int(val_rgb.b() * 255.0)));
-		}
-		*/
-	}
-
-
-	virtual void receiveMessage( const std::string& id, const std::string& message )override
-	{
-		std::lock_guard<std::mutex> lock(m_renderer_access_lock);
-		//std::cout << "DummyRenderer::receiveMessage  " << message << std::endl;std::flush(std::cout);
-
-		// parse json ---
-		jsmn_parser parser;
-		jsmn_init(&parser);
-		jsmntok_t tokens[256];
-		int r = jsmn_parse(&parser, &message[0], message.size(), tokens, 256);
-
-
-		std::map<std::string, jsmntok_t*> map;
-		jsmn_to_map( message, &tokens[0], map );
-
-		std::string command = jsmn_to_string(message, map["command"]);
-		//std::cout << "command=" << command << std::endl;
-
-
-		if(command == "set")
-		{
-		  std::map<std::string, jsmntok_t*> props;
-		  jsmn_to_map( message, map["properties"], props );
-
-		  //for( auto& it:props )
-		  //{
-			//	std::string prop = it.first;
-			//if( it.second->type == JSMN_PRIMITIVE )
-			//  std::cout << "setting property:" << prop << "=" << jsmn_to_number<double>(message, it.second) << std::endl;
-			//else
-			//if( it.second->type == JSMN_STRING )
-			//  std::cout << "setting property:" << prop << "=" << jsmn_to_string(message, it.second) << std::endl;
-		  //}
-
-
-		  /*
-		  {
-			// parse gl-matrix.js matrix string
-			std::string camToWorldStr = jsmn_to_string(message, props["camToWorld"]);
-			camToWorldStr = replace( camToWorldStr, "mat4(", "" );
-			camToWorldStr = replace( camToWorldStr, ")", "" );
-			std::vector<std::string> components;
-			splitString( camToWorldStr, components, "," );
-
-			M44d m;
-			m << fromString<double>(components[0]), fromString<double>(components[1]), fromString<double>(components[2]), fromString<double>(components[3]),
-			   fromString<double>(components[4]), fromString<double>(components[5]), fromString<double>(components[6]), fromString<double>(components[7]),
-			   fromString<double>(components[8]), fromString<double>(components[9]), fromString<double>(components[10]), fromString<double>(components[11]),
-			   fromString<double>(components[12]), fromString<double>(components[13]), fromString<double>(components[14]), fromString<double>(components[15]);
-
-			M44d m2 = m.transpose();
-			for( int i=0;i<4;++i )
-			  for( int j=0;j<4;++j )
-				std::cout << m2(i, j) << " ";
-				//std::cout << m_scene->m_camera->m_cameraToWorld.getMatrix()(i, j) << " ";
-			std::cout << std::endl;
-
-
-			//m_scene->m_camera->setCameraToWorld( Transformd(m2) );
-
-			//math::M44f m;
-			//if( components.size() == 16 )
-			//{
-			//  for( int i=0;i<16;++i )
-			//	m.ma[i] = core::fromString<float>(components[i]);
-			//}
-			//camera->setViewToWorld(m);
-
-
-			//m_glViewer->update();
-			m_doReset = true;
-		  }
-		  */
-
-		  //cx = jsmn_to_number<double>(message, props["cx"]);
-		  //cy = jsmn_to_number<double>(message, props["cy"]);
-		}
-	}
-
-	//GLWidget* m_glViewer;
-	private:
-	bool m_doReset;
-
-	std::mutex m_renderer_access_lock;
-
-};
+#include <util/string.h>
 
 
 
 
 using namespace ospray;
+
+
+
+
+
+
+
+struct OSPRRenderer : public IScene
+{
+	ospcommon::box3f      bbox;
+	ospray::cpp::Model    model;
+	ospray::cpp::Renderer renderer;
+	ospray::cpp::Camera   camera;
+	ospray::cpp::FrameBuffer fb;
+	osp::vec2i imgSize;
+
+	OSPRRenderer(int argc, const char **argv)
+	{
+		counter = 0;
+		Timer timer;
+
+
+		timer.reset();
+		timer.start();
+		auto ospObjs = parseWithDefaultParsers(argc, argv);
+		timer.stop();
+		std::cout << "parsing done. took " << timer.elapsedSeconds() << "s" << std::endl;std::flush(std::cout);
+
+
+		std::tie(bbox, model, renderer, camera) = ospObjs;
+
+
+/*
+		float pos_x = 292.579;
+		float pos_y = 127.829;
+		float pos_z = 346.911;
+
+		float lookat_x = 162.636;
+		float lookat_y = 0;
+		float lookat_z = 152.048;
+
+		camera.set("pos", ospcommon::vec3f(pos_x, pos_y, pos_z));
+		camera.set("dir", ospcommon::vec3f(lookat_x-pos_x,lookat_y-pos_y,lookat_z-pos_z) );
+		camera.set("up", ospcommon::vec3f(0.0f, 1.0f, 0.0f) );
+		camera.commit();
+*/
+
+		renderer.set("world",  model);
+		renderer.set("model",  model);
+		renderer.set("camera", camera);
+
+		int spp = 1;
+		renderer.set("spp", spp);
+
+		renderer.commit();
+
+		// image size
+		//imgSize.x = 4096; // width
+		//imgSize.y = 4096; // height
+		imgSize.x = 512; // width
+		imgSize.y = 512; // height
+
+
+		fb = ospray::cpp::FrameBuffer(imgSize, OSP_FB_SRGBA, OSP_FB_COLOR | OSP_FB_DEPTH | OSP_FB_ACCUM);
+		fb.clear(OSP_FB_ACCUM);
+
+
+		std::cout << "renderFrame about to start\n";std::flush(std::cout);
+		std::cout << "resolution=" << imgSize.x << " " << imgSize.y << std::endl;;std::flush(std::cout);
+		std::cout << "spp=" << spp << std::endl;;std::flush(std::cout);
+
+
+		timer.reset();
+		timer.start();
+		renderer.renderFrame(fb, OSP_FB_COLOR | OSP_FB_ACCUM);
+		timer.stop();
+		std::cout << "render frame took " << timer.elapsedSeconds() << "s\n";
+
+	}
+
+	// IScene implementation ------------------------
+	virtual void message( const std::string& msg )override
+	{
+		std::cout << "OSPRRenderer::message: msg="  << msg << std::endl;
+	}
+	virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )override
+	{
+		for( int i=0;i<nattrs;++i )
+		{
+			const Attribute& attr = attr_list[i];
+			std::cout << "OSPRRenderer::setAttr: object=" << object_handle << " attr=" << attr.m_name;
+
+			switch(attr.m_type)
+			{
+				case Attribute::EType::EFloat:
+					std::cout << " value=" << attr.ptr<float>()[0] << std::endl;
+					break;
+				case Attribute::EType::EP3f:
+					std::cout << " value=" << attr.ptr<float>()[0] << " " << attr.ptr<float>()[1] << " " << attr.ptr<float>()[2] << std::endl;
+					break;
+				case Attribute::EType::EM44f:
+					std::cout << " value=" << attr.ptr<float>()[0] << " " << attr.ptr<float>()[1] << " " << attr.ptr<float>()[2] << " " << attr.ptr<float>()[3];
+					std::cout << " " << attr.ptr<float>()[4] << " " << attr.ptr<float>()[5] << " " << attr.ptr<float>()[6] << " " << attr.ptr<float>()[7];
+					std::cout << " " << attr.ptr<float>()[8] << " " << attr.ptr<float>()[9] << " " << attr.ptr<float>()[10] << " " << attr.ptr<float>()[11];
+					std::cout << " " << attr.ptr<float>()[12] << " " << attr.ptr<float>()[13] << " " << attr.ptr<float>()[14] << " " << attr.ptr<float>()[15] << std::endl;
+					break;
+			}
+
+			if( attr.m_name == "position" )
+			{
+				//m_cx = attr.ptr<float>()[0];
+				//m_cy = attr.ptr<float>()[1];            
+			}else
+			if( attr.m_name == "radius" )
+			{
+				//m_radius = attr.ptr<float>()[0];            
+			}else
+			if( attr.m_name == "xform" )
+			{
+				std::cout << "setting transform matrix....\n";
+				camera.set("pos", ospcommon::vec3f(attr.ptr<float>()[12], attr.ptr<float>()[13], attr.ptr<float>()[14]));
+				//camera.set("dir", ospcommon::vec3f(lookat_x-pos_x,lookat_y-pos_y,lookat_z-pos_z) );
+				//camera.set("up", ospcommon::vec3f(0.0f, 1.0f, 0.0f) );
+				camera.set("dir", ospcommon::vec3f(attr.ptr<float>()[8], attr.ptr<float>()[9], attr.ptr<float>()[10]) );
+				camera.set("up", ospcommon::vec3f(attr.ptr<float>()[4], attr.ptr<float>()[5], attr.ptr<float>()[6]) );
+				camera.commit();
+
+				// ospray expects position, viewing direction and up vector
+				// we extract this information from the matrix
+
+				//m_radius = attr.ptr<float>()[0];            
+			}
+
+		}
+
+		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+	}
+
+
+
+	void advance()
+	{
+		Timer timer;
+		timer.reset();
+		timer.start();
+		renderer.renderFrame(fb, OSP_FB_COLOR | OSP_FB_ACCUM);
+		timer.stop();
+		std::cout << "render frame took " << timer.elapsedSeconds() << "s\n";
+		++counter;
+	}
+
+	int counter;
+private:
+
+};
+
+
+OSPRRenderer* g_osprRenderer;
+
+
+
+
+
+
+
+
+
+
 
 // helper function to write the rendered image as PPM file
 void writePPM(const char *fileName,
@@ -224,10 +233,11 @@ void writePPM(const char *fileName,
   unsigned char *out = (unsigned char *)alloca(3*size.x);
   for (int y = 0; y < size.y; y++) {
 	const unsigned char *in = (const unsigned char *)&pixel[(size.y-1-y)*size.x];
-	for (int x = 0; x < size.x; x++) {
-	  out[3*x + 0] = in[4*x + 0];
-	  out[3*x + 1] = in[4*x + 1];
-	  out[3*x + 2] = in[4*x +2 ];
+	for (int x = 0; x < size.x; x++)
+	{
+		out[3*x + 0] = in[4*x + 0];
+		out[3*x + 1] = in[4*x + 1];
+		out[3*x + 2] = in[4*x +2 ];
 	}
 	fwrite(out, 3*size.x, sizeof(char), file);
   }
@@ -247,188 +257,165 @@ void error(const std::string &msg)
 }
 
 
-int main(int ac, const char **av)
+
+static void *client_task (void *args)
 {
-  Timer timer;
+    zctx_t *ctx = zctx_new ();
+    void *client = zsocket_new (ctx, ZMQ_DEALER);
 
-  // initialize OSPRay; OSPRay parses (and removes) its commandline parameters, e.g. "--osp:debug"
-  ospInit(&ac, av);
-  std::cout << "ospInit done\n";std::flush(std::cout);
+    //  Set random identity to make tracing easier
+    //char identity [10];
+    //sprintf (identity, "%04X-%04X", randof (0x10000), randof (0x10000));
+    //zsocket_set_identity (client, identity);
+    std::string identity = "head";
+    zsocket_set_identity (client, identity.c_str());
+    //zsocket_connect (client, "tcp://localhost:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.57:5570");
+    if(!result)
+        std::cout << "connected to server...\n";
 
-  timer.reset();
-  timer.start();
-  auto ospObjs = parseWithDefaultParsers(ac, av);
-  timer.stop();
-  std::cout << "parsing done. took " << timer.elapsedSeconds() << "s" << std::endl;std::flush(std::cout);
+    zmq_pollitem_t items [] = { { client, 0, ZMQ_POLLIN, 0 } };
+    int request_nbr = 0;
+    int counter = 0;
+    while (true)
+    {
+        //  Tick once per second, pulling in arriving messages
+        int centitick;
+        //int count = 100;
+        int count = 50;
+        for (centitick = 0; centitick < count; centitick++)
+        {
+            // ??
+            //zmq_poll (items, 1, 10 * ZMQ_POLL_MSEC);
+            zmq_poll (items, 1, 0);
+            if (items [0].revents & ZMQ_POLLIN)
+            {
+                // receive message from server
+                zmsg_t *msg = zmsg_recv (client);
 
-  ospcommon::box3f      bbox;
-  ospray::cpp::Model    model;
-  ospray::cpp::Renderer renderer;
-  ospray::cpp::Camera   camera;
+                // we expect messages of the following form:
+                //<int: opcode> <binary data chunk>
+                // this will be routed directly to the execute function of our scene interface
+                // note that there is no identity frame here
 
-  std::tie(bbox, model, renderer, camera) = ospObjs;
+                
+                zframe_t* content = zmsg_last (msg);
 
-
-  /*
-  float pos_x = 252.85;
-  float pos_y = 72.075;
-  float pos_z = 32.1726;
-
-  float lookat_x = 153.497;
-  float lookat_y = 15.94;
-  float lookat_z = 146.397;
-  */
-  float pos_x = 292.579;
-  float pos_y = 127.829;
-  float pos_z = 346.911;
-
-  float lookat_x = 162.636;
-  float lookat_y = 0;
-  float lookat_z = 152.048;
-
-  camera.set("pos", ospcommon::vec3f(pos_x, pos_y, pos_z));
-  camera.set("dir", ospcommon::vec3f(lookat_x-pos_x,lookat_y-pos_y,lookat_z-pos_z) );
-  camera.set("up", ospcommon::vec3f(0.0f, 1.0f, 0.0f) );
-  camera.commit();
-
-
-  renderer.set("world",  model);
-  renderer.set("model",  model);
-  renderer.set("camera", camera);
-
-  int spp = 1;
-  renderer.set("spp", spp);
-
-  renderer.commit();
-
-  // image size
-  osp::vec2i imgSize;
-  imgSize.x = 4096; // width
-  imgSize.y = 4096; // height
-
-  //imgSize.x = 512; // width
-  //imgSize.y = 512; // height
+                // debug prints
+                //std::cout << "received message !!!!!!!!!!!!!!!!!!!!!\n";
+                //std::string test_str = std::string( (char*)zframe_data(content),  zframe_size (content));
+                //std::cout << "message from downstream: id=" << identity << " msg=" << test_str << std::endl;
 
 
-  ospray::cpp::FrameBuffer fb = ospray::cpp::FrameBuffer(imgSize, OSP_FB_SRGBA, OSP_FB_COLOR | OSP_FB_DEPTH | OSP_FB_ACCUM);
-  fb.clear(OSP_FB_ACCUM);
+                // execute the binary chunk with our render server---
+                Command command;
+                command.data = std::shared_ptr<void>((char*)zframe_data(content), empty_delete<void>());
+                command.size = zframe_size (content);
+                //execute(&g_simpleScene, command);
+                execute(g_osprRenderer, command);
+
+                zmsg_destroy (&msg);
+            }
+        }
+
+        // send a request to the server (this would be the rendered image)
+        //std::cout << "client:sending request\n";
+        std::string image = ">                    <";
+        image[counter++%(image.size()-2) + 1] = 'o';
+        //zstr_sendf (client, image.c_str());
 
 
-  std::cout << "renderFrame about to start\n";std::flush(std::cout);
-  std::cout << "resolution=" << imgSize.x << " " << imgSize.y << std::endl;;std::flush(std::cout);
-  std::cout << "spp=" << spp << std::endl;;std::flush(std::cout);
+        // render image 
+        g_osprRenderer->advance();
+
+        // access rendered image, convert to ldr and compress to jpeg
+        {
+//            int xres, yres;
+//            float* data_hdr = g_simpleRenderer.getRGBData(xres, yres);
+//            int numPixels = xres*yres;
+//            std::vector<unsigned char> data_ldr( numPixels*3 );
+
+//            std::transform( data_hdr, data_hdr + numPixels*3,
+//                            data_ldr.begin(),
+//                [](float value_linear)
+//                {
+//                    float value_srgb = 0;
+//                    if (value_linear <= 0.0031308f)
+//                        value_srgb = 12.92f * value_linear;
+//                    else
+//                        value_srgb = (1.0f + 0.055f)*std::pow(value_linear, 1.0f/2.4f) -  0.055f;
+
+//                    return (unsigned char)(std::max( 0.0, std::min(255.0, value_srgb*255.0) ));
+//                });
 
 
-  timer.reset();
-  timer.start();
-  renderer.renderFrame(fb, OSP_FB_COLOR | OSP_FB_ACCUM);
-  timer.stop();
-  std::cout << "render frame took " << timer.elapsedSeconds() << "s\n";
+            // --------------------------------------
+            //TODO: convert srgba to srgb and write to memory
+            uint32_t *p = (uint32_t*)g_osprRenderer->fb.map(OSP_FB_COLOR);
+            int xres = g_osprRenderer->imgSize.x;
+            int yres = g_osprRenderer->imgSize.y;
+            int numPixels = xres*yres;
+            std::vector<unsigned char> data_ldr( numPixels*3 );
 
-  // save screenshot
-  std::string basename = "firstFrame";
-  const uint32_t *p = (uint32_t*)fb.map(OSP_FB_COLOR);
-  writePPM(std::string(basename+".ppm").c_str(), imgSize, p);
-  std::cout << "#ospGlutViewer: saved current frame to '" << basename << ".ppm" << std::endl;
+            unsigned char* ptr_dst = (unsigned char*)&data_ldr[0];
+			unsigned char* ptr_src = (unsigned char*)p;
 
-  // websocket server test -----------
-  {
- 	OSPRayRenderer renderer;
- 	RenderServer rserver(&renderer);
+			for (int y = 0; y < yres; ++y)
+			{
+				const unsigned char *in = &ptr_src[(yres-1-y)*xres*4];
+				unsigned char* out = &ptr_dst[y*xres*3];
 
- 	// this will start the render server which listens to messages from clients and progress updates from the renderer
-	rserver.start();
-	//// this will start the actual rendering process
-	//renderer.start();
+				for (int x = 0; x < xres; ++x)
+				{
+					out[3*x + 0] = in[4*x + 0];
+					out[3*x + 1] = in[4*x + 1];
+					out[3*x + 2] = in[4*x + 2];
+				}
+			}
+
+			g_osprRenderer->fb.unmap(p);
+
+			//std::string filename = "images/test_" + zeroPadNumber(g_osprRenderer->counter) + ".jpg";
+			//write_jpeg_to_file( filename.c_str(), xres, yres, &data_ldr[0] );
+            write_jpeg_to_memory( xres, yres, &data_ldr[0], image );
+
+
+            zmsg_t* msg = zmsg_new();
+            zframe_t* frame = zframe_new(&image[0], image.size());
+            zmsg_append( msg, &frame );
+            zmsg_send( &msg, client );
+        }
+
+    }
+    zctx_destroy (&ctx);
+    return NULL;
 }
 
 
+int main(int argc, const char **argv)
+{
+	// initialize OSPRay; OSPRay parses (and removes) its commandline parameters, e.g. "--osp:debug"
+	ospInit(&argc, argv);
+	std::cout << "ospInit done\n";std::flush(std::cout);
+
+
+	g_osprRenderer = new OSPRRenderer(argc, argv);
+
+
 /*
-  // ospTutorial -----------------------------------
-  // image size
-  osp::vec2i imgSize;
-  imgSize.x = 1024; // width
-  imgSize.y = 768; // height
-
-  // camera
-  float cam_pos[] = {0.f, 0.f, 0.f};
-  float cam_up [] = {0.f, 1.f, 0.f};
-  float cam_view [] = {0.1f, 0.f, 1.f};
-
-  // triangle mesh data
-  float vertex[] = { -1.0f, -1.0f, 3.0f, 0.f,
-					 -1.0f,  1.0f, 3.0f, 0.f,
-					  1.0f, -1.0f, 3.0f, 0.f,
-					  0.1f,  0.1f, 0.3f, 0.f };
-  float color[] =  { 0.9f, 0.5f, 0.5f, 1.0f,
-					 0.8f, 0.8f, 0.8f, 1.0f,
-					 0.8f, 0.8f, 0.8f, 1.0f,
-					 0.5f, 0.9f, 0.5f, 1.0f };
-  int32_t index[] = { 0, 1, 2,
-					  1, 2, 3 };
+	// save screenshot
+	std::string basename = "firstFrame";
+	const uint32_t *p = (uint32_t*)fb.map(OSP_FB_COLOR);
+	writePPM(std::string(basename+".ppm").c_str(), imgSize, p);
+	std::cout << "#ospGlutViewer: saved current frame to '" << basename << ".ppm" << std::endl;
+*/
 
 
-  // create and setup camera
-  OSPCamera camera = ospNewCamera("perspective");
-  ospSetf(camera, "aspect", imgSize.x/(float)imgSize.y);
-  ospSet3fv(camera, "pos", cam_pos);
-  ospSet3fv(camera, "dir", cam_view);
-  ospSet3fv(camera, "up",  cam_up);
-  ospCommit(camera); // commit each object to indicate modifications are done
+	// run thread
+    zthread_new (client_task, NULL);
+    zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
 
+	delete g_osprRenderer;
 
-  // create and setup model and mesh
-  OSPGeometry mesh = ospNewGeometry("triangles");
-  OSPData data = ospNewData(4, OSP_FLOAT3A, vertex); // OSP_FLOAT3 format is also supported for vertex positions (currently not on MIC)
-  ospCommit(data);
-  ospSetData(mesh, "vertex", data);
-
-  data = ospNewData(4, OSP_FLOAT4, color);
-  ospCommit(data);
-  ospSetData(mesh, "vertex.color", data);
-
-  data = ospNewData(2, OSP_INT3, index); // OSP_INT4 format is also supported for triangle indices
-  ospCommit(data);
-  ospSetData(mesh, "index", data);
-
-  ospCommit(mesh);
-
-
-  OSPModel world = ospNewModel();
-  ospAddGeometry(world, mesh);
-  ospCommit(world);
-
-
-  // create and setup renderer
-  OSPRenderer renderer = ospNewRenderer("scivis"); // choose Scientific Visualization renderer
-  ospSet1f(renderer, "aoWeight", 1.0f);            // with full Ambient Occlusion
-  ospSet1i(renderer, "aoSamples", 1);
-  ospSetObject(renderer, "model",  world);
-  ospSetObject(renderer, "camera", camera);
-  ospCommit(renderer);
-
-
-  // create and setup framebuffer
-  OSPFrameBuffer framebuffer = ospNewFrameBuffer(imgSize, OSP_FB_SRGBA, OSP_FB_COLOR | OSP_FB_ACCUM);
-  ospFrameBufferClear(framebuffer, OSP_FB_COLOR | OSP_FB_ACCUM);
-
-  // render one frame
-  ospRenderFrame(framebuffer, renderer, OSP_FB_COLOR | OSP_FB_ACCUM);
-
-  // access framebuffer and write its content as PPM file
-  const uint32_t * fb = (uint32_t*)ospMapFrameBuffer(framebuffer, OSP_FB_COLOR);
-  writePPM("firstFrame.ppm", imgSize, fb);
-  ospUnmapFrameBuffer(fb, framebuffer);
-
-
-  // render 10 more frames, which are accumulated to result in a better converged image
-  for (int frames = 0; frames < 10; frames++)
-	ospRenderFrame(framebuffer, renderer, OSP_FB_COLOR | OSP_FB_ACCUM);
-
-  fb = (uint32_t*)ospMapFrameBuffer(framebuffer, OSP_FB_COLOR);
-  writePPM("accumulatedFrame.ppm", imgSize, fb);
-  ospUnmapFrameBuffer(fb, framebuffer);
-  */
-
-  return 0;
+    return 0;
 }

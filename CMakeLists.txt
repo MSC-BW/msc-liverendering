@@ -9,13 +9,13 @@ SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/gcc.cmake)
 
 # ----------------
-set( APP_NAME "ospray-test" )
+set( APP_NAME "ospray-backend" )
 MESSAGE( STATUS "application:" ${APP_NAME} )
 MESSAGE( STATUS "binary output:" ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} )
 
 
 # find ospray common -----
-set( OSPRAY_SOURCE_DIR /zhome/academic/HLRS/zmc/zmcdkoer/ospr/ospray-master )
+set( OSPRAY_SOURCE_DIR /zhome/academic/HLRS/zmc/zmcdkoer/ospr/install-sources/ospray )
 set( OSPRAYCOMMON_INCLUDE_DIR ${OSPRAY_SOURCE_DIR} ) # this is to get common/affineSpace.h etc. Its weird since common is the ospray_common library...
 
 # find OSPRAY ------
@@ -30,17 +30,51 @@ set( OSPRAY_LIBRARIES ${CMAKE_INSTALL_PREFIX}/lib64/libospray.so
 
 ADD_SUBDIRECTORY(common/miniSG) 
 
-find_package(rserver REQUIRED)
-if (rserver_FOUND)
-    message("-- Found rserver version ${rserver_VERSION}: ${rserver_INCLUDE_DIRS}")
+#find_package(rserver REQUIRED)
+#if (rserver_FOUND)
+#    message("-- Found rserver version ${rserver_VERSION}: ${rserver_INCLUDE_DIRS}")
+#else ()
+#    message(FATAL_ERROR "rserver not found")
+#endif ()
+
+
+# ----------------------------------------------
+
+# required to allow cmake to find findczmq.cmake
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
+find_package(czmq REQUIRED)
+if (czmq_FOUND)
+		message("-- Found czmq version ${czmq_VERSION}: ${czmq_INCLUDE_DIRS}")
 else ()
-    message(FATAL_ERROR "rserver not found")
+		message(FATAL_ERROR "czmq not found")
 endif ()
 
 
-set( app_sources src/main.cpp )
+# JPEG_INCLUDE_DIR /zhome/academic/HLRS/zmc/zmcdkoer/ospr/install/include
+# JPEG_LIBRARIES /zhome/academic/HLRS/zmc/zmcdkoer/ospr/install/lib/libjpeg.so
+set(JPEG_INCLUDE_DIR /zhome/academic/HLRS/zmc/zmcdkoer/ospr/install/include )
+set(JPEG_LIBRARIES /zhome/academic/HLRS/zmc/zmcdkoer/ospr/install/lib/libjpeg.so)
+#find_package(JPEG)
+#if (JPEG_FOUND)
+#    message("-- Found jpeg version ${JPEG_VERSION}: ${JPEG_INCLUDE_DIR}")
+#else ()
+#    message(FATAL_ERROR "jpeg not found")
+#endif ()
+
+# ----------------------------------------------
+
+
+set( app_sources src/main.cpp
+				 src/jpeg.cpp
+				 src/string.cpp
+				 src/rsi.cpp )
+
+#add_definitions(-DWEBSOCKETPP_STRICT_MASKING)
 
 add_executable(${APP_NAME} ${app_sources} )
+
+set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 11)
+
 
 # additional include directories ---
 include_directories( ${PROJECT_SOURCE_DIR}/include )
@@ -62,5 +96,7 @@ include_directories( ${OSPRAY_INCLUDE_DIR}/ospray )
 
 
 # additional libraries
-target_link_libraries(${APP_NAME} ${OSPRAY_LIBRARIES} ospray_minisg rserver )
+target_link_libraries(${APP_NAME} ${OSPRAY_LIBRARIES} ospray_minisg )
 #target_link_libraries(${APP_NAME} ${OSPRAYSG_LIBRARIES} )
+target_link_libraries(${APP_NAME} ${czmq_LIBRARIES} )
+target_link_libraries(${APP_NAME} ${JPEG_LIBRARIES} )
