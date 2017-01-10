@@ -51,8 +51,23 @@ enum EOpCode
 {
 	ENOP = 0,
 	EMessage = 1,
-	ESetAttr = 2
+	ESetAttr = 2,
+	ECreate = 3
 };
+
+const std::string getString(const Attribute& attr, int index )
+{
+	int size = 0;
+	const char* ptr = (char*)attr.m_data.get();
+	for( int i=0;i<=index;++i )
+	{
+		 size = *((int*)ptr);
+		 ptr += 4 + size;
+	}
+
+	ptr -= size;
+	return std::string(ptr, size);
+}
 
 
 
@@ -180,6 +195,12 @@ void execute( IScene* si, Command command )
 			}
 
 			si->setAttr( handle, &attr_list[0], attr_list.size() );
+		}break;
+		case EOpCode::ECreate:
+		{
+			std::string type = buf.read_string();
+			std::string handle = buf.read_string();
+			si->create( type, handle );
 		}break;
 		default:
 			//throw std::runtime_error("execute: unknown opcode");

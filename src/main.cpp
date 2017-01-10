@@ -26,6 +26,7 @@
 #include <zmq.h>
 #include <czmq.h>
 #include <iostream>
+#include <map>
 
 #include <rsi/rsi.h>
 
@@ -45,6 +46,20 @@
 #include "miniSG/miniSG.h"
 #include <ospray/ospray.h>
 #include <common/commandline/Utility.h>
+#include <ospray_cpp/Camera.h>
+#include <ospray_cpp/Model.h>
+#include <ospray_cpp/Renderer.h>
+#include <ospray_cpp/Data.h>
+
+
+#include <common/commandline/CameraParser.h>
+#include <common/commandline/LightsParser.h>
+#include <common/commandline/SceneParser/MultiSceneParser.h>
+#include <common/commandline/RendererParser.h>
+
+#include <tuple>
+#include <type_traits>
+
 #undef PING
 
 #include <util/timer.h>
@@ -53,20 +68,80 @@
 
 
 
+
+
 using namespace ospray;
 
 
 
+inline void parseForLoadingModules2(int ac, const char**& av)
+{
+  for (int i = 1; i < ac; i++) {
+    const std::string arg = av[i];
+    if (arg == "--module" || arg == "-m") {
+      ospLoadModule(av[++i]);
+    }
+  }
+}
+
+
+template <typename RendererParser_T,
+          typename CameraParser_T,
+          typename SceneParser_T,
+          typename LightsParser_T>
+inline ParsedOSPObjects parseCommandLine2(int ac, const char **&av)
+{
+  static_assert(std::is_base_of<RendererParser, RendererParser_T>::value,
+                "RendererParser_T is not a subclass of RendererParser.");
+  static_assert(std::is_base_of<CameraParser, CameraParser_T>::value,
+                "CameraParser_T is not a subclass of CameraParser.");
+  static_assert(std::is_base_of<SceneParser, SceneParser_T>::value,
+                "SceneParser_T is not a subclass of SceneParser.");
+  static_assert(std::is_base_of<LightsParser, LightsParser_T>::value,
+                "LightsParser_T is not a subclass of LightsParser.");
+
+  parseForLoadingModules2(ac, av);
+
+  //CameraParser_T cameraParser;
+  //cameraParser.parse(ac, av);
+  //auto camera = cameraParser.camera();
+  ospray::cpp::Camera camera;
+
+  RendererParser_T rendererParser;
+  rendererParser.parse(ac, av);
+  auto renderer = rendererParser.renderer();
+
+  SceneParser_T sceneParser{rendererParser.renderer()};
+  sceneParser.parse(ac, av);
+  auto model = sceneParser.model();
+  auto bbox  = sceneParser.bbox();
+
+  //LightsParser_T lightsParser(renderer);
+  //lightsParser.parse(ac, av);
+
+  return std::make_tuple(bbox, model, renderer, camera);
+}
+
+inline ParsedOSPObjects parseWithDefaultParsers2(int ac, const char**& av)
+{
+  return parseCommandLine2<DefaultRendererParser, DefaultCameraParser,
+                          MultiSceneParser, DefaultLightsParser>(ac, av);
+}
 
 
 
 
 struct OSPRRenderer : public IScene
 {
+	std::map<std::string, ospray::cpp::ManagedObject*> m_objects;
+	
+	std::vector<std::pair<std::string, ospray::cpp::Camera>> m_cameras;
+	std::vector<std::pair<std::string, ospray::cpp::Light>> m_lights;
+	
+
 	ospcommon::box3f      bbox;
 	ospray::cpp::Model    model;
 	ospray::cpp::Renderer renderer;
-	ospray::cpp::Camera   camera;
 	ospray::cpp::FrameBuffer fb;
 	osp::vec2i imgSize;
 
@@ -78,28 +153,18 @@ struct OSPRRenderer : public IScene
 
 		timer.reset();
 		timer.start();
-		auto ospObjs = parseWithDefaultParsers(argc, argv);
+		auto ospObjs = parseWithDefaultParsers2(argc, argv);
 		timer.stop();
 		std::cout << "parsing done. took " << timer.elapsedSeconds() << "s" << std::endl;std::flush(std::cout);
 
 
+		ospray::cpp::Camera camera;
 		std::tie(bbox, model, renderer, camera) = ospObjs;
 
-
-/*
-		float pos_x = 292.579;
-		float pos_y = 127.829;
-		float pos_z = 346.911;
-
-		float lookat_x = 162.636;
-		float lookat_y = 0;
-		float lookat_z = 152.048;
-
-		camera.set("pos", ospcommon::vec3f(pos_x, pos_y, pos_z));
-		camera.set("dir", ospcommon::vec3f(lookat_x-pos_x,lookat_y-pos_y,lookat_z-pos_z) );
-		camera.set("up", ospcommon::vec3f(0.0f, 1.0f, 0.0f) );
+		// create default camera ---
+		camera = ospray::cpp::Camera("perspective");
 		camera.commit();
-*/
+
 
 		renderer.set("world",  model);
 		renderer.set("model",  model);
@@ -126,18 +191,78 @@ struct OSPRRenderer : public IScene
 		std::cout << "spp=" << spp << std::endl;;std::flush(std::cout);
 
 
-		timer.reset();
-		timer.start();
-		renderer.renderFrame(fb, OSP_FB_COLOR | OSP_FB_ACCUM);
-		timer.stop();
-		std::cout << "render frame took " << timer.elapsedSeconds() << "s\n";
+		m_cameras.push_back(std::make_pair("camera", camera));
+		updateObjectMap();
+	}
 
+	// this function is required to be called after any of the camera/light/etc. list changes
+	// this is because m_objects holds pointers to the handles in the type lists and these can change
+	// during reallocation...
+	// TODO: move to our own managed objects...
+	void updateObjectMap()
+	{
+		m_objects.clear();
+		for( auto& p : m_cameras )
+		{
+			std::string name = p.first;
+			ospray::cpp::Camera& cam = p.second;
+			m_objects[ name ] = &cam;
+		}
+		for( auto& p : m_lights )
+		{
+			std::string name = p.first;
+			ospray::cpp::Light& light = p.second;
+			m_objects[ name ] = &light;
+		}
+	}
+
+	void updateLightList()
+	{
+		std::vector<OSPLight> lights;
+		for( auto& p : m_lights )
+		{
+			lights.push_back( p.second.handle() );
+		}
+		auto lightArray = ospray::cpp::Data(lights.size(), OSP_OBJECT, lights.data());
+		renderer.set("lights", lightArray);
+		renderer.commit();
+	}
+
+	ospray::cpp::ManagedObject* getObject( const std::string& id )
+	{
+		auto it = m_objects.find(id);
+		if( it != m_objects.end() )
+			return it->second;
+		return 0;
 	}
 
 	// IScene implementation ------------------------
 	virtual void message( const std::string& msg )override
 	{
 		std::cout << "OSPRRenderer::message: msg="  << msg << std::endl;
+
+/*
+		std::string name = "hdri light";
+
+		ospray::cpp::ManagedObject* object = getObject( name );
+		if( object )
+		{
+			std::cout << "got object!!!!!!!\n";
+			std::string HDRI_file_name = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/lightProbes/rnl_probe.pfm";
+			ospcommon::FileName imageFile(HDRI_file_name.c_str());
+			ospray::miniSG::Texture2D *lightMap = ospray::miniSG::loadTexture(imageFile.path(), imageFile.base());
+		    if (lightMap == NULL){
+		      std::cout << "Failed to load hdri-light texture '" << imageFile << "'" << std::endl;
+		    } else {
+		      std::cout << "Successfully loaded hdri-light texture '" << imageFile << "'" << std::endl;
+		    }
+		    OSPTexture2D ospLightMap = ospray::miniSG::createTexture2D(lightMap);
+			object->set( "map", ospLightMap);
+			object->commit();
+		}
+
+		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+*/
 	}
 	virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )override
 	{
@@ -148,10 +273,16 @@ struct OSPRRenderer : public IScene
 
 			switch(attr.m_type)
 			{
+				case Attribute::EType::EString:
+					std::cout << " value=" << getString(attr, 0) << std::endl;
+					break;
 				case Attribute::EType::EFloat:
 					std::cout << " value=" << attr.ptr<float>()[0] << std::endl;
 					break;
 				case Attribute::EType::EP3f:
+				case Attribute::EType::EV3f:
+				case Attribute::EType::EC3f:
+				case Attribute::EType::EN3f:
 					std::cout << " value=" << attr.ptr<float>()[0] << " " << attr.ptr<float>()[1] << " " << attr.ptr<float>()[2] << std::endl;
 					break;
 				case Attribute::EType::EM44f:
@@ -162,34 +293,99 @@ struct OSPRRenderer : public IScene
 					break;
 			}
 
-			if( attr.m_name == "position" )
+			ospray::cpp::ManagedObject* object = getObject( object_handle );
+			if( object )
 			{
-				//m_cx = attr.ptr<float>()[0];
-				//m_cy = attr.ptr<float>()[1];            
-			}else
-			if( attr.m_name == "radius" )
-			{
-				//m_radius = attr.ptr<float>()[0];            
-			}else
-			if( attr.m_name == "xform" )
-			{
-				std::cout << "setting transform matrix....\n";
-				camera.set("pos", ospcommon::vec3f(attr.ptr<float>()[12], attr.ptr<float>()[13], attr.ptr<float>()[14]));
-				//camera.set("dir", ospcommon::vec3f(lookat_x-pos_x,lookat_y-pos_y,lookat_z-pos_z) );
-				//camera.set("up", ospcommon::vec3f(0.0f, 1.0f, 0.0f) );
-				camera.set("dir", ospcommon::vec3f(attr.ptr<float>()[8], attr.ptr<float>()[9], attr.ptr<float>()[10]) );
-				camera.set("up", ospcommon::vec3f(attr.ptr<float>()[4], attr.ptr<float>()[5], attr.ptr<float>()[6]) );
-				camera.commit();
+				if( object_handle == "camera" && attr.m_name == "xform" )
+				{
+					std::cout << "setting transform matrix....\n";
+					// ospray camera expects position, viewing direction and up vector which we extract from the transformation matrix
+					object->set("pos", ospcommon::vec3f(attr.ptr<float>()[12], attr.ptr<float>()[13], attr.ptr<float>()[14]));
+					object->set("dir", ospcommon::vec3f(attr.ptr<float>()[8], attr.ptr<float>()[9], attr.ptr<float>()[10]) );
+					object->set("up", ospcommon::vec3f(attr.ptr<float>()[4], attr.ptr<float>()[5], attr.ptr<float>()[6]) );
+				}else
+				{
+					switch(attr.m_type)
+					{
+						case Attribute::EType::EString:
+						{
+							// ospray objects can have special parameter types such as textures.
+							// Our attributes only support basic types such as strings, floats etc.
+							// the solution is, to use string attributes with some markup to encode these special parameters
+							// for example:
+							// "texture2d:/path/to/texture" will cause a texture load and setting the texture object
+							std::string value = getString(attr, 0);
+							std::vector<std::string> strings;
+							splitString( value, strings, ":" );
 
-				// ospray expects position, viewing direction and up vector
-				// we extract this information from the matrix
+							if( strings.size() == 1 )
+								// ordinary string
+								object->set( attr.name(), value );
+							else
+							{
+								std::string& type = strings[0];
+								std::string& value = strings[1];
 
-				//m_radius = attr.ptr<float>()[0];            
+								if(type == "texture2d")
+								{
+									ospcommon::FileName imageFile(value.c_str());
+									ospray::miniSG::Texture2D *texture2d = ospray::miniSG::loadTexture(imageFile.path(), imageFile.base());
+									if (texture2d == NULL)
+									{
+										std::cout << "Failed to load hdri-light texture '" << imageFile << "'" << std::endl;
+									}else
+									{
+										std::cout << "Successfully loaded hdri-light texture '" << imageFile << "'" << std::endl;
+									}
+		    						OSPTexture2D ospTexture2d = ospray::miniSG::createTexture2D(texture2d);
+		    						object->set( attr.name(), ospTexture2d);
+								}
+							}
+						}break;
+						case Attribute::EType::EFloat:
+							object->set( attr.name(), attr.ptr<float>()[0] );
+							break;
+						case Attribute::EType::EP3f:
+						case Attribute::EType::EV3f:
+						case Attribute::EType::EC3f:
+						case Attribute::EType::EN3f:
+							object->set( attr.name(), attr.ptr<float>()[0], attr.ptr<float>()[1], attr.ptr<float>()[2] );
+							break;
+						case Attribute::EType::EM44f:
+							break;
+					}
+				}
+				object->commit();
+			}else
+			{
+				std::cout << "OSPRRenderer::setAttr: error: object " << object_handle << " not found!\n";
 			}
 
 		}
 
 		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+	}
+
+	virtual void create( const std::string& type, const std::string& object_handle )override
+	{
+		std::cout << "OSPRRenderer::create: type="  << type << " handle=" << object_handle << std::endl;
+		if( type == "DirectionalLight" )
+		{
+			auto ospLight = renderer.newLight("directional");
+			ospLight.set("name", object_handle);
+			m_lights.push_back(std::make_pair(object_handle, ospLight));
+			updateLightList();
+		}else
+		if( type == "HDRILight" )
+		{
+			auto ospLight = renderer.newLight("hdri");
+			//ospLight.set("name", object_handle);
+			m_lights.push_back(std::make_pair(object_handle, ospLight));
+			updateLightList();			
+		}
+		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+
+		updateObjectMap();
 	}
 
 
@@ -401,6 +597,38 @@ int main(int argc, const char **argv)
 
 	g_osprRenderer = new OSPRRenderer(argc, argv);
 
+	auto ospHdri = g_osprRenderer->renderer.newLight("hdri");
+
+	/*
+	std::string HDRI_file_name = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/lightProbes/rnl_probe.pfm";
+	ospcommon::FileName imageFile(HDRI_file_name.c_str());
+	ospray::miniSG::Texture2D *lightMap = ospray::miniSG::loadTexture(imageFile.path(), imageFile.base());
+    if (lightMap == NULL){
+      std::cout << "Failed to load hdri-light texture '" << imageFile << "'" << std::endl;
+    } else {
+      std::cout << "Successfully loaded hdri-light texture '" << imageFile << "'" << std::endl;
+    }
+    OSPTexture2D ospLightMap = ospray::miniSG::createTexture2D(lightMap);
+	ospHdri.set( "map", ospLightMap);
+	*/
+
+
+	//ospHdri.set("name", "hdri light");
+	//ospHdri.set("up", 0.f, 1.f, 0.f);
+	//ospHdri.set("dir", 1.f, 0.f, 0.0f);
+	//ospHdri.set( "intensity", 30.0);
+    //ospHdri.commit();
+
+	
+	//g_osprRenderer->m_lights.push_back(std::make_pair("hdri light", ospHdri));
+
+	//g_osprRenderer->updateLightList();
+	//g_osprRenderer->updateObjectMap();
+
+
+
+
+	//execute( g_osprRenderer, cmd );
 
 /*
 	// save screenshot

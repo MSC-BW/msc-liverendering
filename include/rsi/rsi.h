@@ -79,12 +79,20 @@ struct Attribute
 		return m_size*element_size(m_type);
 	}
 
+	const std::string name()const
+	{
+		return m_name;
+	}
+
 
 	std::string m_name;
 	int m_type;
 	int m_size; // number of elements of type m_type (i.e. number of floats, v3fs etc.)
 	std::shared_ptr<void> m_data;
 };
+
+// string attributes require some special treatment as its not trivial to access the strings
+const std::string getString(const Attribute& attr, int index );
 
 
 
@@ -108,6 +116,7 @@ struct IScene
 {
 	virtual void message( const std::string& msg )=0;
 	virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )=0;
+	virtual void create( const std::string& type, const std::string& object_handle )=0;
 };
 
 
