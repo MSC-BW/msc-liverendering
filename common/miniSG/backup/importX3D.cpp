@@ -20,7 +20,7 @@
 #include "miniSG.h"
 #include "importer.h"
 // xml lib
-#include "common/xml/XML.h"
+#include <common/xml/XML.h>
 // std
 #include <fstream>
 #include <set>
@@ -118,8 +118,8 @@ namespace ospray {
           continue;
         }
 
-        std::cout << "importX3D: unknown child type '" << node->name
-          << "' to 'IndexedFaceSet' node\n";
+        throw std::runtime_error("importX3D: unknown child type '"
+                                 + node->name + "' to 'IndexedFaceSet' node");
       }
 
       model.mesh.push_back(mesh);

@@ -17,13 +17,13 @@
 #pragma once
 
 // ospray PUBLIC api
-#include "ospray/ospray.h"
+#include <ospray/ospray.h>
 // ospcommon
-#include "ospcommon/common.h"
-#include "ospcommon/RefCount.h"
-#include "ospcommon/box.h"
-#include "ospcommon/AffineSpace.h"
-#include "ospcommon/FileName.h"
+#include <ospcommon/common.h>
+#include <ospcommon/RefCount.h>
+#include <ospcommon/box.h>
+#include <ospcommon/AffineSpace.h>
+#include <ospcommon/FileName.h>
 
 // stl 
 #include <vector>
