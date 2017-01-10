@@ -23,15 +23,6 @@ function createMenubarFile( editor )
 		//{
 		//	editor.clear();
 		//}
-		//editor.execute(message("test"));
-		//editor.message("test!");
-		var attr_map = new Attribute( "map", Attribute.EType.EString, 1 );
-		attr_map.setString("texture2d:/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/lightProbes/rnl_probe.pfm");
-
-		var attr_list = new Array();
-		attr_list.push(attr_map);
-
-		editor.setAttr("hdri light", attr_list);
 	} );
 	options.add( option );
 
