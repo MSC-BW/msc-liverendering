@@ -61,19 +61,27 @@ set(JPEG_LIBRARIES /zhome/academic/HLRS/zmc/zmcdkoer/ospr/install/lib/libjpeg.so
 #    message(FATAL_ERROR "jpeg not found")
 #endif ()
 
+find_package( ZLIB REQUIRED )
+if ( ZLIB_FOUND )
+	message( "ZLIB_INCLUDE_DIRS=${ZLIB_INCLUDE_DIRS}" )
+	message( "ZLIB_LIBRARIES=${ZLIB_LIBRARIES}" )
+    include_directories( ${ZLIB_INCLUDE_DIRS} )
+endif( ZLIB_FOUND )
+
 # ----------------------------------------------
 
 
 set( app_sources src/main.cpp
 				 src/jpeg.cpp
 				 src/string.cpp
-				 src/rsi.cpp )
+				 src/rsi.cpp
+				 src/gzstream/gzstream.cpp )
 
 #add_definitions(-DWEBSOCKETPP_STRICT_MASKING)
 
 add_executable(${APP_NAME} ${app_sources} )
 
-set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 11)
+set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 14)
 
 
 # additional include directories ---
@@ -100,3 +108,4 @@ target_link_libraries(${APP_NAME} ${OSPRAY_LIBRARIES} ospray_minisg )
 #target_link_libraries(${APP_NAME} ${OSPRAYSG_LIBRARIES} )
 target_link_libraries(${APP_NAME} ${czmq_LIBRARIES} )
 target_link_libraries(${APP_NAME} ${JPEG_LIBRARIES} )
+target_link_libraries(${APP_NAME} ${ZLIB_LIBRARIES} )

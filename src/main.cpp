@@ -27,6 +27,7 @@
 #include <czmq.h>
 #include <iostream>
 #include <map>
+#include <memory>
 
 #include <rsi/rsi.h>
 
@@ -65,6 +66,7 @@
 #include <util/timer.h>
 #include <util/string.h>
 
+#include <gzstream/gzstream.h>
 
 
 
@@ -111,10 +113,13 @@ inline ParsedOSPObjects parseCommandLine2(int ac, const char **&av)
   rendererParser.parse(ac, av);
   auto renderer = rendererParser.renderer();
 
-  SceneParser_T sceneParser{rendererParser.renderer()};
-  sceneParser.parse(ac, av);
-  auto model = sceneParser.model();
-  auto bbox  = sceneParser.bbox();
+  //SceneParser_T sceneParser{rendererParser.renderer()};
+  //sceneParser.parse(ac, av);
+  //auto model = sceneParser.model();
+  ospray::cpp::Model model;
+  model.commit();
+  ospcommon::box3f    bbox;
+  //auto bbox  = sceneParser.bbox();
 
   //LightsParser_T lightsParser(renderer);
   //lightsParser.parse(ac, av);
@@ -129,6 +134,173 @@ inline ParsedOSPObjects parseWithDefaultParsers2(int ac, const char**& av)
 }
 
 
+// Three-index vertex, indexing start at 0, -1 means invalid vertex
+struct FaceVertex
+{
+	int v, vt, vn;
+	FaceVertex() {}
+	FaceVertex(int v) : v(v), vt(v), vn(v) {}
+	FaceVertex(int v, int vt, int vn) : v(v), vt(vt), vn(vn) {}
+};
+
+static inline bool operator < ( const FaceVertex& a, const FaceVertex& b )
+{
+	if (a.v  != b.v)  return a.v  < b.v;
+	if (a.vn != b.vn) return a.vn < b.vn;
+	if (a.vt != b.vt) return a.vt < b.vt;
+	return false;
+}
+
+
+struct BOBJLoader
+{
+	ospray::miniSG::Model &model;
+	std::map<std::string,ospray::miniSG::Material *> material;
+
+
+	BOBJLoader(ospray::miniSG::Model &model, const ospcommon::FileName& fileName):
+		model(model),
+		path(fileName.path()),
+		curMaterial(nullptr)
+	{
+		igzstream in( fileName.c_str(), std::ios::in );
+
+		int numVertices = 0;
+		in.read( (char*)&numVertices, sizeof(int) );
+		for( int i=0;i<numVertices;++i )
+		{
+			float x, y, z;
+			in.read( (char*)&x, sizeof(float) );
+			in.read( (char*)&y, sizeof(float) );
+			in.read( (char*)&z, sizeof(float) );
+			//v.push_back(ospcommon::vec3f(x, y, z));
+			v.push_back(ospcommon::vec3f(x, z, y));
+		}
+
+		int numNormals = 0;
+		in.read( (char*)&numNormals, sizeof(int) );
+		for( int i=0;i<numNormals;++i )
+		{
+			float x, y, z;
+			in.read( (char*)&x, sizeof(float) );
+			in.read( (char*)&y, sizeof(float) );
+			in.read( (char*)&z, sizeof(float) );
+			//vn.push_back(ospcommon::vec3f(x, y, z));
+		}
+
+		int numTriangles = 0;
+		in.read( (char*)&numTriangles, sizeof(int) );
+		for( int i=0;i<numTriangles;++i )
+		{
+			int i0, i1, i2;
+			in.read( (char*)&i0, sizeof(int) );
+			in.read( (char*)&i1, sizeof(int) );
+			in.read( (char*)&i2, sizeof(int) );
+
+			std::vector<FaceVertex> face;
+			face.push_back(FaceVertex(i0, -1, -1));
+			face.push_back(FaceVertex(i1, -1, -1));
+			face.push_back(FaceVertex(i2, -1, -1));
+			curGroup.push_back(face);
+		}
+		flushFaceGroup();
+
+
+
+		std::cout << "numVertices=" << numVertices << std::endl;
+		std::cout << "numNormals=" << numNormals << std::endl;
+		std::cout << "numTriangles=" << numTriangles << std::endl;
+
+	}
+	~BOBJLoader()
+	{
+
+	}
+private:
+
+	void flushFaceGroup()
+	{
+		if (curGroup.empty()) return;
+
+		std::map<FaceVertex, uint32_t> vertexMap;
+		ospray::miniSG::Mesh *mesh = new ospray::miniSG::Mesh;
+		model.mesh.push_back(mesh);
+		model.instance.push_back(ospray::miniSG::Instance(model.mesh.size()-1));
+		mesh->material = curMaterial;
+
+		// merge three indices into one
+		for (size_t j=0; j < curGroup.size(); ++j)
+		{
+			// iterate over all faces
+			const std::vector<FaceVertex>& face = curGroup[j];
+			FaceVertex i0 = face[0], i1 = FaceVertex(-1), i2 = face[1];
+
+			// triangulate the face with a triangle fan
+			for (size_t k=2; k < face.size(); k++)
+			{
+				i1 = i2; i2 = face[k];
+				int32_t v0 = getVertex(vertexMap, mesh, i0);
+				int32_t v1 = getVertex(vertexMap, mesh, i1);
+				int32_t v2 = getVertex(vertexMap, mesh, i2);
+				if (v0 < 0 || v1 < 0 || v2 < 0)
+					continue;
+				ospray::miniSG::Triangle tri;
+				tri.v0 = v0;
+				tri.v1 = v1;
+				tri.v2 = v2;
+				mesh->triangle.push_back(tri);
+			}
+		}
+
+		curGroup.clear();
+	}
+
+
+	uint32_t getVertex(std::map<FaceVertex,uint32_t>& vertexMap, ospray::miniSG::Mesh *mesh, const FaceVertex& i)
+	{
+		const std::map<FaceVertex, uint32_t>::iterator& entry = vertexMap.find(i);
+		if (entry != vertexMap.end())
+			return(entry->second);
+
+		if (std::isnan(v[i.v].x) || std::isnan(v[i.v].y) || std::isnan(v[i.v].z))
+			return -1;
+
+		if (i.vn >= 0 && (std::isnan(vn[i.vn].x) ||
+			std::isnan(vn[i.vn].y) ||
+			std::isnan(vn[i.vn].z)))
+			return -1;
+
+		if (i.vt >= 0 && (std::isnan(vt[i.vt].x) ||
+			std::isnan(vt[i.vt].y)))
+			return -1;
+
+		mesh->position.push_back(v[i.v]);
+		if (i.vn >= 0)
+			mesh->normal.push_back(vn[i.vn]);
+		if (i.vt >= 0)
+			mesh->texcoord.push_back(vt[i.vt]);
+
+		return(vertexMap[i] = int(mesh->position.size()) - 1);
+	}
+
+	ospcommon::FileName path;
+
+	// Geometry buffer ---
+	std::vector<ospcommon::vec3f> v;
+	std::vector<ospcommon::vec3f> vn;
+	std::vector<ospcommon::vec2f> vt;
+	std::vector<std::vector<FaceVertex> > curGroup;
+
+	// Material handling ---
+	ospray::miniSG::Material *curMaterial;
+	ospray::miniSG::Material *defaultMaterial;
+
+	// Internal methods ---
+
+
+
+
+};
 
 
 struct OSPRRenderer : public IScene
@@ -139,8 +311,6 @@ struct OSPRRenderer : public IScene
 	std::vector<std::pair<std::string, ospray::cpp::Light>> m_lights;
 	
 
-	ospcommon::box3f      bbox;
-	ospray::cpp::Model    model;
 	ospray::cpp::Renderer renderer;
 	ospray::cpp::FrameBuffer fb;
 	osp::vec2i imgSize;
@@ -159,7 +329,10 @@ struct OSPRRenderer : public IScene
 
 
 		ospray::cpp::Camera camera;
+		ospcommon::box3f      bbox;
+		ospray::cpp::Model   model;
 		std::tie(bbox, model, renderer, camera) = ospObjs;
+
 
 		// create default camera ---
 		camera = ospray::cpp::Camera("perspective");
@@ -236,10 +409,282 @@ struct OSPRRenderer : public IScene
 		return 0;
 	}
 
+	ospray::cpp::Material createDefaultMaterial()
+	{
+		static auto ospMat = ospray::cpp::Material(nullptr);
+
+		if (ospMat.handle())
+			return ospMat;
+
+		ospMat = renderer.newMaterial("OBJMaterial");
+
+		ospMat.set("Kd", .6f, 0.6f, 0.6f);
+		ospMat.commit();
+		return ospMat;
+	}
+
+
+	ospray::cpp::Material createMaterial(ospray::miniSG::Material *mat)
+	{
+		if (mat == nullptr) return createDefaultMaterial();
+
+		static std::map<miniSG::Material *, cpp::Material> alreadyCreatedMaterials;
+
+		if (alreadyCreatedMaterials.find(mat) != alreadyCreatedMaterials.end())
+		{
+			return alreadyCreatedMaterials[mat];
+		}
+
+		const char *type = mat->getParam("type", "OBJMaterial");
+		assert(type);
+
+		cpp::Material ospMat;
+		try
+		{
+			ospMat = alreadyCreatedMaterials[mat] = renderer.newMaterial(type);
+		} catch (const std::runtime_error &)
+		{
+			//warnMaterial(type);
+			return createDefaultMaterial();
+		}
+
+		const bool isOBJMaterial = !strcmp(type, "OBJMaterial");
+
+		for (auto it =  mat->params.begin(); it !=  mat->params.end(); ++it)
+		{
+			const char *name = it->first.c_str();
+			const miniSG::Material::Param *p = it->second.ptr;
+
+			switch(p->type)
+			{
+				case ospray::miniSG::Material::Param::INT:
+				ospMat.set(name, p->i[0]);
+				break;
+				case ospray::miniSG::Material::Param::FLOAT:
+				{
+					float f = p->f[0];
+					// many mtl materials of obj models wrongly store the phong exponent
+					//'Ns' in range [0..1], whereas OSPRay's material implementations
+					//correctly interpret it to be in [0..inf), thus we map ranges here
+					if (isOBJMaterial &&
+						(!strcmp(name, "Ns") || !strcmp(name, "ns")) &&
+						f < 1.f)
+					{
+						f = 1.f/(1.f - f) - 1.f;
+					}
+					ospMat.set(name, f);
+				} break;
+				case ospray::miniSG::Material::Param::FLOAT_3:
+					ospMat.set(name, p->f[0], p->f[1], p->f[2]);
+					break;
+				case ospray::miniSG::Material::Param::STRING:
+					ospMat.set(name, p->s);
+					break;
+				case ospray::miniSG::Material::Param::TEXTURE:
+				{
+					ospray::miniSG::Texture2D *tex = (ospray::miniSG::Texture2D*)p->ptr;
+					if (tex)
+					{
+						OSPTexture2D ospTex = ospray::miniSG::createTexture2D(tex);
+						assert(ospTex);
+						ospCommit(ospTex);
+						ospMat.set(name, ospTex);
+					}
+					break;
+				}
+				default:
+					throw std::runtime_error("unknown material parameter type");
+			};
+		}
+
+		ospMat.commit();
+		return ospMat;
+	}
+
 	// IScene implementation ------------------------
 	virtual void message( const std::string& msg )override
 	{
-		std::cout << "OSPRRenderer::message: msg="  << msg << std::endl;
+		if(msg == "loadSponza")
+		{
+			loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj" );
+			fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+		}else
+		if( msg == "loadFluidsurface" )
+		{
+			loadBObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz" );
+			fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);			
+		}
+		
+	}
+
+	void loadBObj(const std::string filename)
+	{
+		std::cout << "loading bobj.gz " << filename << std::endl;
+		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
+		BOBJLoader( *msgModel,  ospcommon::FileName(filename) );
+		ospcommon::box3f bbox = msgModel.ptr->getBBox();
+		std::cout << "bbox.lower=" <<bbox.lower.x << " " << bbox.lower.y << " " << bbox.lower.z << std::endl;
+		std::cout << "bbox.upper=" <<bbox.upper.x << " " << bbox.upper.y << " " << bbox.upper.z << std::endl;
+		setModel(msgModel);
+	}
+
+	void loadObj(const std::string filename)
+	{
+		std::cout << "loading obj " << filename << std::endl;
+		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
+		ospray::miniSG::importOBJ(*msgModel, ospcommon::FileName(filename));
+		setModel(msgModel);
+	}
+
+	void setModel( ospcommon::Ref<ospray::miniSG::Model> msgModel )
+	{
+		std::string geometryType = "triangles";
+		
+
+		ospray::cpp::Model model = ospray::cpp::Model();
+		for (size_t i=0;i<msgModel->mesh.size();i++)
+		{
+			ospcommon::Ref<ospray::miniSG::Mesh> msgMesh = msgModel->mesh[i];
+			auto ospMesh = cpp::Geometry(geometryType);
+
+			// add position array to mesh
+			OSPData position = ospNewData(msgMesh->position.size(),
+			                              OSP_FLOAT3A,
+			                              &msgMesh->position[0]);
+			ospMesh.set("position", position);
+
+			// add triangle index array to mesh
+			if (!msgMesh->triangleMaterialId.empty())
+			{
+			  OSPData primMatID = ospNewData(msgMesh->triangleMaterialId.size(),
+			                                 OSP_INT,
+			                                 &msgMesh->triangleMaterialId[0]);
+			  ospMesh.set("prim.materialID", primMatID);
+			}
+
+			// add triangle index array to mesh
+			OSPData index = ospNewData(msgMesh->triangle.size(),
+			                           OSP_INT3,
+			                           &msgMesh->triangle[0]);
+			assert(msgMesh->triangle.size() > 0);
+			ospMesh.set("index", index);
+
+			// add normal array to mesh
+			if (!msgMesh->normal.empty())
+			{
+			  OSPData normal = ospNewData(msgMesh->normal.size(),
+			                              OSP_FLOAT3A,
+			                              &msgMesh->normal[0]);
+			  assert(msgMesh->normal.size() > 0);
+			  ospMesh.set("vertex.normal", normal);
+			}
+
+			// add color array to mesh
+			if (!msgMesh->color.empty())
+			{
+			  OSPData color = ospNewData(msgMesh->color.size(),
+			                             OSP_FLOAT3A,
+			                             &msgMesh->color[0]);
+			  assert(msgMesh->color.size() > 0);
+			  ospMesh.set("vertex.color", color);
+			}
+
+			// add texcoord array to mesh
+			if (!msgMesh->texcoord.empty())
+			{
+			  OSPData texcoord = ospNewData(msgMesh->texcoord.size(),
+			                                OSP_FLOAT2,
+			                                &msgMesh->texcoord[0]);
+			  assert(msgMesh->texcoord.size() > 0);
+			  ospMesh.set("vertex.texcoord", texcoord);
+			}
+
+			ospMesh.set("alpha_type", 0);
+			ospMesh.set("alpha_component", 4);
+
+			// handle materials -----------------
+			// add triangle material id array to mesh
+			//if (msgMesh->materialList.empty())
+			if(1)
+			{
+				// we have a single material for this mesh...
+				auto singleMaterial = createMaterial(msgMesh->material.ptr);
+				//auto singleMaterial = createDefaultMaterial(renderer);
+				ospMesh.setMaterial(singleMaterial);
+			} else
+			{
+				// we have an entire material list, assign that list
+				std::vector<OSPMaterial> materialList;
+				std::vector<OSPTexture2D> alphaMaps;
+				std::vector<float> alphas;
+				for (size_t i = 0; i < msgMesh->materialList.size(); i++)
+				{
+					auto m = createMaterial(msgMesh->materialList[i].ptr);
+					auto handle = m.handle();
+					materialList.push_back(handle);
+
+					for (ospray::miniSG::Material::ParamMap::const_iterator it = msgMesh->materialList[i]->params.begin();
+						 it != msgMesh->materialList[i]->params.end();
+						 it++)
+					{
+						const char *name = it->first.c_str();
+						const ospray::miniSG::Material::Param *p = it->second.ptr;
+						if(p->type == miniSG::Material::Param::TEXTURE)
+						{
+							if(!strcmp(name, "map_kd") || !strcmp(name, "map_Kd"))
+							{
+								ospray::miniSG::Texture2D *tex = (ospray::miniSG::Texture2D*)p->ptr;
+								OSPTexture2D ospTex = createTexture2D(tex);
+								ospCommit(ospTex);
+								alphaMaps.push_back(ospTex);
+							}
+						} else
+						if(p->type == ospray::miniSG::Material::Param::FLOAT)
+						{
+							if(!strcmp(name, "d"))
+								alphas.push_back(p->f[0]);
+						}
+					}
+
+					while(materialList.size() > alphaMaps.size())
+					{
+						alphaMaps.push_back(nullptr);
+					}
+					while(materialList.size() > alphas.size())
+					{
+						alphas.push_back(0.f);
+					}
+				}
+				auto ospMaterialList = cpp::Data(materialList.size(), OSP_OBJECT, &materialList[0]);
+				ospMesh.set("materialList", ospMaterialList);
+
+				/*
+				// only set these if alpha aware mode enabled
+				// this currently doesn't work on the MICs!
+				if(alpha)
+				{
+					auto ospAlphaMapList = cpp::Data(alphaMaps.size(), OSP_OBJECT, &alphaMaps[0]);
+					ospMesh.set("alpha_maps", ospAlphaMapList);
+
+					auto ospAlphaList = cpp::Data(alphas.size(), OSP_OBJECT, &alphas[0]);
+					ospMesh.set("alphas", ospAlphaList);
+				}
+				*/
+			}
+
+			ospMesh.commit();
+
+			model.addGeometry(ospMesh);
+			model.commit();
+
+			renderer.set("world",  model);
+			renderer.set("model",  model);
+			renderer.commit();
+		}
+
+		
+
+
 
 /*
 		std::string name = "hdri light";
@@ -369,6 +814,7 @@ struct OSPRRenderer : public IScene
 	virtual void create( const std::string& type, const std::string& object_handle )override
 	{
 		std::cout << "OSPRRenderer::create: type="  << type << " handle=" << object_handle << std::endl;
+		bool somethingCreated = true;
 		if( type == "DirectionalLight" )
 		{
 			auto ospLight = renderer.newLight("directional");
@@ -382,10 +828,16 @@ struct OSPRRenderer : public IScene
 			//ospLight.set("name", object_handle);
 			m_lights.push_back(std::make_pair(object_handle, ospLight));
 			updateLightList();			
+		}else
+		{
+			somethingCreated = false;
 		}
-		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
 
-		updateObjectMap();
+		if(somethingCreated)
+		{
+			fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+			updateObjectMap();
+		}
 	}
 
 
@@ -466,7 +918,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    int result = zsocket_connect (client, "tcp://193.196.155.57:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.53:5570");
     if(!result)
         std::cout << "connected to server...\n";
 
@@ -590,6 +1042,7 @@ static void *client_task (void *args)
 
 int main(int argc, const char **argv)
 {
+
 	// initialize OSPRay; OSPRay parses (and removes) its commandline parameters, e.g. "--osp:debug"
 	ospInit(&argc, argv);
 	std::cout << "ospInit done\n";std::flush(std::cout);
@@ -597,38 +1050,6 @@ int main(int argc, const char **argv)
 
 	g_osprRenderer = new OSPRRenderer(argc, argv);
 
-	auto ospHdri = g_osprRenderer->renderer.newLight("hdri");
-
-	/*
-	std::string HDRI_file_name = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/lightProbes/rnl_probe.pfm";
-	ospcommon::FileName imageFile(HDRI_file_name.c_str());
-	ospray::miniSG::Texture2D *lightMap = ospray::miniSG::loadTexture(imageFile.path(), imageFile.base());
-    if (lightMap == NULL){
-      std::cout << "Failed to load hdri-light texture '" << imageFile << "'" << std::endl;
-    } else {
-      std::cout << "Successfully loaded hdri-light texture '" << imageFile << "'" << std::endl;
-    }
-    OSPTexture2D ospLightMap = ospray::miniSG::createTexture2D(lightMap);
-	ospHdri.set( "map", ospLightMap);
-	*/
-
-
-	//ospHdri.set("name", "hdri light");
-	//ospHdri.set("up", 0.f, 1.f, 0.f);
-	//ospHdri.set("dir", 1.f, 0.f, 0.0f);
-	//ospHdri.set( "intensity", 30.0);
-    //ospHdri.commit();
-
-	
-	//g_osprRenderer->m_lights.push_back(std::make_pair("hdri light", ospHdri));
-
-	//g_osprRenderer->updateLightList();
-	//g_osprRenderer->updateObjectMap();
-
-
-
-
-	//execute( g_osprRenderer, cmd );
 
 /*
 	// save screenshot
