@@ -13,6 +13,76 @@ function createMenubarAdd( editor )
 	container.add( options );
 
 
+
+
+
+	// Sponza
+	var option = new UI.Row();
+	option.setClass( 'option' );
+	option.setTextContent( 'crytek-sponza' );
+	option.onClick( function ()
+	{
+		editor.message("loadSponza");
+		editor.delete("fluidsurface");
+		editor.delete("crytek-sponza");
+
+		// add a dummy object which represents the loaded model
+		// this is just a stub and wont do anything apart from showing the imported model filename
+		var object = editor.create("Model", "crytek-sponza");
+
+		// now set the modelname attribute
+		var attr_file = new Attribute( "file", Attribute.EType.EString, 1 );
+		attr_file.setString("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj");
+		object.attributes[attr_file.name()] = attr_file;
+
+		// set camera view 
+		viewport.arcball.azimuth = -433.0;
+		viewport.arcball.elevation = -5.12;
+		viewport.arcball.distance = 252.0;
+		viewport.arcball.lookat = vec3.fromValues(85, 231.0, -56.0);
+		viewport.arcball.sensitivity_pan = 1.0;
+		viewport.arcball.sensitivity_zoom = 0.005;
+		viewport.arcball.sensitivity_rotate = 1.0;
+		viewport.updateCamera();
+	} );
+	options.add( option );
+
+	// Fluidsurface
+	var option = new UI.Row();
+	option.setClass( 'option' );
+	option.setTextContent( 'fluidsurface' );
+	option.onClick( function ()
+	{
+		editor.message("loadFluidsurface");
+		editor.delete("fluidsurface");
+		editor.delete("crytek-sponza");
+		// add a dummy object which represents the loaded model
+		// this is just a stub and wont do anything apart from showing the imported model filename
+		var object = editor.create("Model", "fluidsurface");
+
+		// now set the modelname attribute
+		var attr_file = new Attribute( "file", Attribute.EType.EString, 1 );
+		attr_file.setString("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz");
+		object.attributes[attr_file.name()] = attr_file;
+
+		// update camera...
+		viewport.arcball.azimuth = 0.0;
+		viewport.arcball.elevation = 0.0;
+		viewport.arcball.distance = 1.0;
+		viewport.arcball.lookat = vec3.fromValues(-0.979078, -0.98, -0.974673);
+		viewport.arcball.sensitivity_pan = .01;
+		viewport.arcball.sensitivity_zoom = 0.001;		
+		viewport.arcball.sensitivity_rotate = 0.6;
+		viewport.updateCamera();
+
+	} );
+	options.add( option );
+
+
+	// ---
+	options.add( new UI.HorizontalRule() );
+
+
 	// Sun
 	var option = new UI.Row();
 	option.setClass( 'option' );

@@ -9,8 +9,11 @@ class ArcBall
 		this.elevation = 0.0;
 		this.distance = 4.0;
 		this.lookat = vec3.fromValues(0.0, 0.0, 0.0);
-		//this.lookat = vec3.fromValues(1.0, 2.0, 3.0);
 		this.localToWorld = mat4.create();
+
+		this.sensitivity_pan = 1.0;
+		this.sensitivity_zoom = 0.005;
+		this.sensitivity_rotate = 1.0;
 
 		this.build();
 	}
@@ -97,18 +100,19 @@ class RenderView
 			if( buttons == 1)
 			{
 				// left mouse button pressed - rotate
-				self.arcball.elevation += dy;
-				self.arcball.azimuth += -dx;
+				var scale = self.arcball.sensitivity_rotate;
+				self.arcball.elevation += dy*scale;
+				self.arcball.azimuth += -dx*scale;
 				self.updateCamera();
 			}else
 			if( buttons == 4)
 			{
-				var scale = 1.0;
+				var scale = self.arcball.sensitivity_pan;
 				// middle mouse button pressed - pan
 				var xform = self.arcball.getLocalToWorld();
 				var right = vec3.fromValues(self.arcball.localToWorld[0]*scale*dx, self.arcball.localToWorld[1]*scale*dx, self.arcball.localToWorld[2]*scale*dx);
 				var up = vec3.fromValues(self.arcball.localToWorld[4]*scale*dy, self.arcball.localToWorld[5]*scale*dy, self.arcball.localToWorld[6]*scale*dy);
-				var dir = vec3.fromValues(self.arcball.localToWorld[8]*scale, self.arcball.localToWorld[9]*scale, self.arcball.localToWorld[10]*scale);
+				//var dir = vec3.fromValues(self.arcball.localToWorld[8]*scale, self.arcball.localToWorld[9]*scale, self.arcball.localToWorld[10]*scale);
 
 				vec3.add( self.arcball.lookat, self.arcball.lookat, up);
 				vec3.add( self.arcball.lookat, self.arcball.lookat, right);
@@ -118,7 +122,7 @@ class RenderView
 			{
 				// right mouse button pressed - zoom
 				var zoom_sign = -1.0; //
-				var scale = 0.005;
+				var scale = self.arcball.sensitivity_zoom;
 				//var scale = 1.0;
 				self.arcball.distance += zoom_sign*dx*self.arcball.distance*scale;
 				self.updateCamera();

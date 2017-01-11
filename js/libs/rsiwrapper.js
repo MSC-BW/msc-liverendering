@@ -77,9 +77,41 @@ class DirectionalLight
 
 class HDRILight
 {
-  	constructor()
+	constructor()
 	{
 		this.type = "HDRILight";
+		this.name = "";
+		this.id = -1;
+
+		this.attributes = {}
+		this.uiInfo = {};
+	}
+
+	getAttr( name )
+	{
+		return this.attributes[name];
+	}
+
+	getAttrNames()
+	{
+		var attrNames = [];
+		for( var attrName in this.attributes )
+			attrNames.push(attrName);
+		return attrNames;
+	}
+
+	getUIInfo( name )
+	{
+		return this.uiInfo[name];
+	}
+};
+
+
+class Model
+{
+	constructor()
+	{
+		this.type = "Model";
 		this.name = "";
 		this.id = -1;
 

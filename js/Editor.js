@@ -138,6 +138,10 @@ class Editor
 		if( type == "HDRILight" )
 		{
 			object = new HDRILight();
+		}else
+		if( type == "Model" )
+		{
+			object = new Model();
 		}
 
 		if(object)
@@ -154,6 +158,20 @@ class Editor
 
 		// fire event to update gui ---
 		this.signals.sceneGraphChanged.dispatch();
+
+		return object;
+	}
+
+	delete( object_handle )
+	{
+		if( object_handle in this.objects_handle )
+		{
+			var object = this.objects_handle[object_handle];
+
+			delete this.objects_handle[object_handle];
+			delete this.objects[object.id];
+		}
+		
 	}
 
 };

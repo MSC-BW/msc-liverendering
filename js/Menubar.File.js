@@ -23,6 +23,7 @@ function createMenubarFile( editor )
 		//{
 		//	editor.clear();
 		//}
+		
 	} );
 	options.add( option );
 

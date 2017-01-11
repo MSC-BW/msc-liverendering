@@ -60,13 +60,6 @@
 			var viewport = new RenderView(editor, width, height);
 			document.body.appendChild( viewport.dom.dom );
 
-			// set default view
-			viewport.arcball.azimuth = -433.0;
-			viewport.arcball.elevation = -5.12;
-			viewport.arcball.distance = 252.0;
-			viewport.arcball.lookat = vec3.fromValues(85, 231.0, -56.0);
-			viewport.updateCamera();
-
 			// needs to be done manually from menu bar
 			editor.connect("ws://localhost:9002/test?id=test");
 
