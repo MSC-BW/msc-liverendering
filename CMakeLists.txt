@@ -70,9 +70,9 @@ endif( ZLIB_FOUND )
 
 
 set( app_sources src/main.cpp
-				 src/jpeg.cpp
-				 src/string.cpp
-				 src/rsi.cpp
+				 src/util/jpeg.cpp
+				 src/util/string.cpp
+				 src/rsi/rsi.cpp
 				 src/gzstream/gzstream.cpp )
 
 add_executable(${APP_NAME} ${app_sources} )
