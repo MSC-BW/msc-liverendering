@@ -1,7 +1,5 @@
 
 
-
-
 # proxy-server ====================================
 if( ${BUILD_PROXY} )
 	add_subdirectory( proxy )

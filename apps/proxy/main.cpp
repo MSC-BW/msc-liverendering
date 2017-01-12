@@ -1,4 +1,9 @@
-//  Hello World server
+/*
+This file implements a simple proxy to run within the HPC network.
+The purpose of this proxy is to allow cray compute nodes to talk bidirectional with the outside world.
+Special about this proxy is that it exposes a websocket server to the downstream client side
+and an ordinary tcp/ip connection (using zeromq) to the upstream client.
+*/
 #include <zmq.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -220,10 +225,7 @@ WebsocketServer* g_wsserver;
 //  of workers and route replies back to clients. One worker can handle
 //  one request at a time but one client can talk to multiple workers at
 //  once.
-
 static void server_worker (void *args, zctx_t *ctx, void *pipe);
-
-
 void *server_task (void *args)
 {
     //  Frontend socket talks to clients over TCP
@@ -235,6 +237,8 @@ void *server_task (void *args)
     void *backend = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_bind (backend, "inproc://backend");
 
+    // uncomment the following codesnipped if the downstream client talks to the proxy
+    // using zeromq (instead of websockets)
     /*
     //  Launch pool of worker threads, precise number is not critical
     int thread_nbr;
@@ -246,11 +250,8 @@ void *server_task (void *args)
     */
 
 
-
-
-
-    ///*
-    // test
+    // the following code part runs an infinite while loop which waits for messages from downstream
+    // or upstream and redirects them to the other side. 
     {
     	bool is_connected_to_head = false;
     	std::string head_id;
@@ -348,18 +349,12 @@ void *server_task (void *args)
 	    };
 
     }
-    //*/
-
-
-
 
 
     zctx_destroy (&ctx);
     return NULL;
 }
 
-//  Each worker task works on one request at a time and sends a random number
-//  of replies back, with random delays between replies:
 
 static void
 server_worker (void *args, zctx_t *ctx, void *pipe)
@@ -384,77 +379,8 @@ server_worker (void *args, zctx_t *ctx, void *pipe)
         	std::string image((char*)zframe_data(content), size);
         	//std::cout << "image:" << image << std::endl;
         }
-
-
-
-        // receive a message from the user client ---
-
-
-
-        // alternatively produce message from user client
-        {
-        	/*
-        	int value = 123456;
-
-        	Parameter param;
-        	param.m_name = "pos";
-        	param.m_type = Parameter::EInteger;
-        	param.m_size = 1;
-        	param.m_data = &value;
-
-
-            //  Sleep for some fraction of a second
-            zclock_sleep (randof (1000) + 1);
-
-        	zframe_send (&identity, worker, ZFRAME_REUSE + ZFRAME_MORE);
-            zframe_send (&content, worker, ZFRAME_REUSE);
-            */
-
-            //zmsg_t *m = zmsg_new ();
-            //zmsg_append( m, &identity);
-            //zmsg_append( m, &content);
-            //zmsg_send(&m, worker);
-
-            ///*
-            //zmsg_t *m = zmsg_from_param(&param);
-            //zmsg_prepend(m, &identity);
-            //zmsg_send(&m, worker);
-            //*/
-
-        }
-/*
-        //  Send 0..4 replies back (this would be the scene updates)
-        int reply, replies = randof (5);
-        for (reply = 0; reply < replies; reply++)
-        {
-            //  Sleep for some fraction of a second
-            zclock_sleep (randof (1000) + 1);
-            //std::cout << "worker sending reply\n";
-            zframe_send (&identity, worker, ZFRAME_REUSE + ZFRAME_MORE);
-            zframe_send (&content, worker, ZFRAME_REUSE);
-        }
-*/
-        //zframe_destroy (&identity);
-        //zframe_destroy (&content);
     }
 }
-
-//  The main thread simply starts several clients and a server, and then
-//  waits for the server to finish.
-
-/*
-int main (void)
-{
-    zthread_new (server_task, NULL);
-    zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
-    return 0;
-}
-*/
-
-
-
-///*
-
 
 
 
@@ -470,13 +396,4 @@ int main()
 	int secondsToRun = 5000;
     zclock_sleep (secondsToRun * 1000);    //  Run for 50 seconds then quit
     return 0;
-
-/*
-	wsserver_thread->join();
-*/	
-	//while(1)
-	//{
-	//}
-
 }
-//*/
