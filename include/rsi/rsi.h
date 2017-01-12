@@ -117,6 +117,7 @@ struct IScene
 	virtual void message( const std::string& msg )=0;
 	virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )=0;
 	virtual void create( const std::string& type, const std::string& object_handle )=0;
+	virtual void remove( const std::string& object_handle )=0;
 };
 
 

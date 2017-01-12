@@ -146,6 +146,7 @@ namespace ospray {
       path(fileName.path()),
       curMaterial(nullptr)
     {
+    	std::cout << "OBJLoader::OBJLoader: !!!!!!!!!!!!\n";
       /* open file */
       std::ifstream cin;
       cin.open(fileName.c_str());

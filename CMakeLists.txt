@@ -28,8 +28,6 @@ set( OSPRAY_LIBRARIES ${CMAKE_INSTALL_PREFIX}/lib64/libospray.so
 
 
 
-ADD_SUBDIRECTORY(common/miniSG) 
-
 #find_package(rserver REQUIRED)
 #if (rserver_FOUND)
 #    message("-- Found rserver version ${rserver_VERSION}: ${rserver_INCLUDE_DIRS}")
@@ -77,8 +75,6 @@ set( app_sources src/main.cpp
 				 src/rsi.cpp
 				 src/gzstream/gzstream.cpp )
 
-#add_definitions(-DWEBSOCKETPP_STRICT_MASKING)
-
 add_executable(${APP_NAME} ${app_sources} )
 
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 14)
@@ -100,12 +96,8 @@ include_directories( ${OSPRAY_SOURCE_DIR}/apps/common )
 # ospray_cpp headers are installed into the ospray subdirectory within the ospray-include directory
 include_directories( ${OSPRAY_INCLUDE_DIR}/ospray )
 
-#include_directories( ${OSPRAYSG_INCLUDE_DIRS} )
-
-
 # additional libraries
-target_link_libraries(${APP_NAME} ${OSPRAY_LIBRARIES} ospray_minisg )
-#target_link_libraries(${APP_NAME} ${OSPRAYSG_LIBRARIES} )
+target_link_libraries(${APP_NAME} ${OSPRAY_LIBRARIES} )
 target_link_libraries(${APP_NAME} ${czmq_LIBRARIES} )
 target_link_libraries(${APP_NAME} ${JPEG_LIBRARIES} )
 target_link_libraries(${APP_NAME} ${ZLIB_LIBRARIES} )

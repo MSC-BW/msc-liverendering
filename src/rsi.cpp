@@ -52,7 +52,8 @@ enum EOpCode
 	ENOP = 0,
 	EMessage = 1,
 	ESetAttr = 2,
-	ECreate = 3
+	ECreate = 3,
+	ERemove = 4
 };
 
 const std::string getString(const Attribute& attr, int index )
@@ -201,6 +202,11 @@ void execute( IScene* si, Command command )
 			std::string type = buf.read_string();
 			std::string handle = buf.read_string();
 			si->create( type, handle );
+		}break;
+		case EOpCode::ERemove:
+		{
+			std::string handle = buf.read_string();
+			si->remove( handle );
 		}break;
 		default:
 			//throw std::runtime_error("execute: unknown opcode");

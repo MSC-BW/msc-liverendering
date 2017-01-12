@@ -43,8 +43,7 @@
 #  include <alloca.h>
 #endif
 
-
-#include "miniSG/miniSG.h"
+#include <common/miniSG/miniSG.h>
 #include <ospray/ospray.h>
 #include <common/commandline/Utility.h>
 #include <ospray_cpp/Camera.h>
@@ -113,13 +112,15 @@ inline ParsedOSPObjects parseCommandLine2(int ac, const char **&av)
   rendererParser.parse(ac, av);
   auto renderer = rendererParser.renderer();
 
-  //SceneParser_T sceneParser{rendererParser.renderer()};
-  //sceneParser.parse(ac, av);
-  //auto model = sceneParser.model();
-  ospray::cpp::Model model;
-  model.commit();
-  ospcommon::box3f    bbox;
-  //auto bbox  = sceneParser.bbox();
+  SceneParser_T sceneParser{rendererParser.renderer()};
+  sceneParser.parse(ac, av);
+  auto model = sceneParser.model();
+  auto bbox  = sceneParser.bbox();
+
+  //ospcommon::box3f    bbox;
+  //ospray::cpp::Model model;
+  //model.commit();
+
 
   //LightsParser_T lightsParser(renderer);
   //lightsParser.parse(ac, av);
@@ -303,6 +304,622 @@ private:
 };
 
 
+// SERIALIZATION HELPERS =====================================================
+
+// here we give very simple binary buffers for serialization and deserialization
+// these are used to pack scene manipulation commands into binary messages which
+// can go over the wire
+
+struct OutputFile
+{
+    OutputFile( const std::string& filename ):file(filename.c_str(), std::ios::out | std::ios::binary)
+    {
+    }
+
+    void write_int( const int& value )
+    {
+        file.write( reinterpret_cast<const char*>(&value), sizeof(int) );
+    }
+
+    void write_float( const float& value )
+    {
+        file.write( reinterpret_cast<const char*>(&value), sizeof(float) );
+    }
+
+    void write_string( const std::string& str )
+    {
+        int size = str.size();
+        write_int( size );
+        file.write( reinterpret_cast<const char*>(&str[0]), size );
+    }
+
+    void write_data( const char* ptr, int size )
+    {
+        write_int( size );
+        file.write( ptr, size );
+    }
+
+
+ private:
+    std::ofstream file;
+};
+
+
+struct InputFile
+{
+    InputFile( const std::string& filename ):
+    	file(filename.c_str(), std::ios::in | std::ios::binary)
+    {
+    }
+
+    int read_int()
+    {
+    	int value = -1;
+    	file.read( (char*)&value, sizeof(int));
+    	return value;
+    }
+
+    float read_float()
+    {
+    	float value = -1.0f;
+    	file.read( (char*)&value, sizeof(float));
+    	return value;
+    }
+
+    std::string read_string()
+    {
+    	int size = read_int();
+    	std::string str(size, ' ');
+
+    	file.read( (char*)&str[0], size);
+
+    	return str;
+    }
+
+    std::shared_ptr<void> read_data()
+    {
+    	int size = read_int();
+    	std::shared_ptr<void> data( malloc(size), free );
+    	file.read( (char*)data.get(), size );
+    	return data;
+    }
+
+    void read_data( char *data, int max_size )
+    {
+    	int size = read_int();
+    	if( max_size != size )
+    	{
+    		std::cout << "InputFile::read_data error: sizes dont match!\n";
+    		throw std::runtime_error("InputFile::read_data error: sizes dont match!");
+    		return;
+    	}
+    	file.read( data, size );
+    }
+
+private:
+	std::ifstream file;
+};
+
+
+struct MiniSGExporter
+{
+	std::map<ospray::miniSG::Material*, int> materialref_to_index;
+	std::map<ospray::miniSG::Texture2D*, int> textureref_to_index;
+
+	std::string paramTypeToString( ospray::miniSG::Material::Param::DataType type )
+	{
+		switch( type )
+		{
+			case ospray::miniSG::Material::Param::INT:return "INT";break;
+			case ospray::miniSG::Material::Param::INT_2:return "INT_2";break;
+			case ospray::miniSG::Material::Param::INT_3:return "INT_3";break;
+			case ospray::miniSG::Material::Param::INT_4:return "INT_4";break;
+			case ospray::miniSG::Material::Param::UINT:return "UINT";break;
+			case ospray::miniSG::Material::Param::UINT_2:return "UINT_2";break;
+			case ospray::miniSG::Material::Param::UINT_3:return "UINT_3";break;
+			case ospray::miniSG::Material::Param::UINT_4:return "UINT_4";break;
+			case ospray::miniSG::Material::Param::FLOAT:return "FLOAT";break;
+			case ospray::miniSG::Material::Param::FLOAT_2:return "FLOAT_2";break;
+			case ospray::miniSG::Material::Param::FLOAT_3:return "FLOAT_3";break;
+			case ospray::miniSG::Material::Param::FLOAT_4:return "FLOAT_4";break;
+			case ospray::miniSG::Material::Param::TEXTURE:return "TEXTURE";break;
+			case ospray::miniSG::Material::Param::STRING:return "STRING";break;
+			default:
+			case ospray::miniSG::Material::Param::UNKNOWN:return "UNKNOWN";break;
+		};
+		return "unknown";
+	}
+	OutputFile out;
+	MiniSGExporter( const std::string& filename, ospray::miniSG::Model &model ):
+		out(filename)
+	{
+		std::cout << "exporting miniSG model " << filename << std::endl;
+		std::cout << "numMeshes=" << model.numMeshes() << std::endl;
+		std::cout << "numInstances=" << model.instance.size() << std::endl;
+		
+
+
+		// we collect all materials and textures...
+		std::vector<ospray::miniSG::Material*> materials;
+		std::vector<ospray::miniSG::Texture2D*> textures;
+		
+		// here find all materials from meshes
+		for( int i=0, numMeshes=model.numMeshes();i<numMeshes;++i )
+		{
+			if( model.mesh[i]->material )
+			{
+				ospray::miniSG::Material* mat = model.mesh[i]->material.ptr;
+				auto it = materialref_to_index.find( mat );
+				if( it == materialref_to_index.end() )
+				{
+					materials.push_back( mat );
+					materialref_to_index[mat] = materials.size()-1;
+				}
+			}
+		}
+
+		// here we find all textures from materials
+		for( int i=0, numMaterials = materials.size();i<numMaterials;++i )
+		{
+			ospray::miniSG::Material* mat = materials[i];
+			// now iterate all parameters and look for textures
+			for( auto it :mat->params )
+			{
+				ospcommon::Ref<ospray::miniSG::Material::Param> param = it.second;
+				if(param->type == ospray::miniSG::Material::Param::TEXTURE)
+				{
+					if( param->ptr != nullptr )
+					{
+						ospray::miniSG::Texture2D* tex = (ospray::miniSG::Texture2D*)param->ptr;
+						auto it = textureref_to_index.find( tex );
+						if( it == textureref_to_index.end() )
+						{
+							textures.push_back( tex );
+							textureref_to_index[tex] = textures.size()-1;
+						}						
+					}
+				}
+			}
+		}
+
+
+		std::cout << "numMaterials=" << materials.size() << std::endl;
+		std::cout << "numTextures=" << textures.size() << std::endl;
+
+
+		// export all textures ---
+		out.write_int(textures.size());
+		for( int i=0, numTextures = textures.size();i<numTextures;++i )
+			exportTexture( textures[i] );
+
+		// export all materials ---
+		out.write_int(materials.size());
+		for( int i=0, numMaterials = materials.size();i<numMaterials;++i )
+			exportMaterial( materials[i] );
+
+
+		//export meshes --------------
+
+		out.write_int(model.numMeshes());
+		for( int i=0, numMeshes=model.numMeshes();i<numMeshes;++i )
+			exportMesh(*model.mesh[i]);
+		out.write_int( model.instance.size() );
+		for( int i=0, numInstances=model.instance.size();i<numInstances;++i )
+		{
+			out.write_int(model.instance[i].meshID);
+		}
+
+	}
+
+	void exportTexture( ospray::miniSG::Texture2D* tex )
+	{
+		out.write_int(tex->width);
+		out.write_int(tex->height);
+		out.write_int(tex->channels);
+		out.write_int(tex->depth);
+		out.write_int(tex->prefereLinear);
+		int size = tex->width*tex->height*tex->channels*tex->depth;
+		out.write_data((char*)tex->data, size);
+	}
+
+	void exportMaterial( ospray::miniSG::Material* mat )
+	{
+		out.write_string(mat->name);
+		out.write_string(mat->type);
+		out.write_int( mat->params.size() );
+		for( auto it :mat->params )
+		{
+			std::string name = it.first;
+			ospcommon::Ref<ospray::miniSG::Material::Param> param = it.second;
+
+			out.write_string(name);
+			out.write_int((int)param->type);
+
+			switch( param->type )
+			{
+				case ospray::miniSG::Material::Param::INT:
+				{
+					out.write_int(param->i[0]);
+				}break;
+				case ospray::miniSG::Material::Param::INT_2:
+				{
+					out.write_int(param->i[0]);
+					out.write_int(param->i[1]);
+				}break;
+				case ospray::miniSG::Material::Param::INT_3:
+				{
+					out.write_int(param->i[0]);
+					out.write_int(param->i[1]);
+					out.write_int(param->i[2]);
+				}break;
+				case ospray::miniSG::Material::Param::INT_4:
+				{
+					out.write_int(param->i[0]);
+					out.write_int(param->i[1]);
+					out.write_int(param->i[2]);
+					out.write_int(param->i[3]);
+				}break;
+				case ospray::miniSG::Material::Param::UINT:
+				{
+					out.write_int(param->ui[0]);
+				}break;
+				case ospray::miniSG::Material::Param::UINT_2:
+				{
+					out.write_int(param->ui[0]);
+					out.write_int(param->ui[1]);
+				}break;
+				case ospray::miniSG::Material::Param::UINT_3:
+				{
+					out.write_int(param->ui[0]);
+					out.write_int(param->ui[1]);
+					out.write_int(param->ui[2]);
+				}break;
+				case ospray::miniSG::Material::Param::UINT_4:
+				{
+					out.write_int(param->ui[0]);
+					out.write_int(param->ui[1]);
+					out.write_int(param->ui[2]);
+					out.write_int(param->ui[3]);
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT:
+				{
+					out.write_float(param->f[0]);
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT_2:
+				{
+					out.write_float(param->f[0]);
+					out.write_float(param->f[1]);
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT_3:
+				{
+					out.write_float(param->f[0]);
+					out.write_float(param->f[1]);
+					out.write_float(param->f[2]);
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT_4:
+				{
+					out.write_float(param->f[0]);
+					out.write_float(param->f[1]);
+					out.write_float(param->f[2]);
+					out.write_float(param->f[3]);
+				}break;
+				case ospray::miniSG::Material::Param::TEXTURE:
+				{
+					ospray::miniSG::Texture2D* tex = (ospray::miniSG::Texture2D*)param->ptr;
+					int tex_index = -1;
+					auto it = textureref_to_index.find(tex);
+					if( it != textureref_to_index.end() )
+						tex_index = it->second;
+					out.write_int(tex_index);
+				}break;
+				case ospray::miniSG::Material::Param::STRING:
+				{
+					std::string s = param->s;
+					out.write_string(s);
+				}break;
+				default:
+				case ospray::miniSG::Material::Param::UNKNOWN:
+				{
+				}break;
+			}; // switch(param->type)
+		} // for param
+	}
+
+
+	void exportMesh( ospray::miniSG::Mesh& mesh )
+	{
+		/*
+		std::cout << "MiniSGExporter::exportMesh...\n";
+		std::cout << "name=" << mesh.name << std::endl;;
+		std::cout << "numPoints=" << mesh.position.size() << std::endl;
+		std::cout << "numNormals=" << mesh.normal.size() << std::endl;
+		std::cout << "numColors=" << mesh.color.size() << std::endl;
+		std::cout << "numTexcoords=" << mesh.texcoord.size() << std::endl;
+		std::cout << "numTriangles=" << mesh.triangle.size() << std::endl;
+		std::cout << "numTriangleMaterialId=" << mesh.triangleMaterialId.size() << std::endl;
+		std::cout << "numMaterials=" << mesh.materialList.size()<< std::endl;
+		*/
+
+		/*
+		if(mesh.materialList.size()>0)
+			std::cout << "got mesh with materiallist\n";
+		if(mesh.triangleMaterialId.size()>0)
+			std::cout << "got mesh with triangleMaterialId\n";
+		if(mesh.material)
+			std::cout << "got mesh with material\n";
+		*/
+
+
+		// name
+		out.write_string( mesh.name );
+
+		// position
+		out.write_int( mesh.position.size() );
+		if( !mesh.position.empty() )
+			out.write_data( (char*)&mesh.position[0], mesh.position.size()*sizeof(ospcommon::vec3fa) );
+
+		// normal
+		out.write_int( mesh.normal.size() );
+		if( !mesh.normal.empty() )
+			out.write_data( (char*)&mesh.normal[0], mesh.normal.size()*sizeof(ospcommon::vec3fa) );
+
+		// color
+		out.write_int( mesh.color.size() );
+		if( !mesh.color.empty() )
+			out.write_data( (char*)&mesh.color[0], mesh.color.size()*sizeof(ospcommon::vec3fa) );
+
+		// texcoord
+		out.write_int( mesh.texcoord.size() );
+		if( !mesh.texcoord.empty() )
+			out.write_data( (char*)&mesh.texcoord[0], mesh.texcoord.size()*sizeof(ospcommon::vec2f) );
+
+		// triangle
+		out.write_int( mesh.triangle.size() );
+		if( !mesh.triangle.empty() )
+			out.write_data( (char*)&mesh.triangle[0], mesh.triangle.size()*sizeof(ospray::miniSG::Triangle) );
+
+		// triangleMaterialId
+		out.write_int( mesh.triangleMaterialId.size() );
+		if( !mesh.triangleMaterialId.empty() )
+			out.write_data( (char*)&mesh.triangleMaterialId[0], mesh.triangleMaterialId.size()*sizeof(uint32_t) );
+
+
+		int material_index = -1;
+		if(mesh.material)
+			material_index = materialref_to_index[mesh.material.ptr];
+		out.write_int(material_index);
+	}
+
+};
+
+struct MiniSGImporter
+{
+	InputFile in;
+	std::vector<ospcommon::Ref<ospray::miniSG::Material>> m_materials;
+	std::vector<ospray::miniSG::Texture2D*> m_textures;
+
+
+	MiniSGImporter( const std::string& filename, ospray::miniSG::Model &model ):
+		in(filename)
+	{
+		std::cout << "importing miniSG model " << filename << std::endl;
+		
+		// import textures ---
+		int numTextures = in.read_int();
+		for( int i=0;i<numTextures;++i )
+			m_textures.push_back(importTexture());
+
+		// import materials ---
+		int numMaterials = in.read_int();
+		for( int i=0;i<numMaterials;++i )
+			m_materials.push_back(importMaterial());
+
+
+		//import meshes --------------
+		int numMeshes = in.read_int();
+		for( int i=0;i<numMeshes;++i )
+			importMesh(model);
+		int numInstances = in.read_int();
+		for( int i=0;i<numInstances;++i )
+			model.instance.push_back(ospray::miniSG::Instance( in.read_int() ));
+
+
+		std::cout << "numMeshes=" << numMeshes << std::endl;
+		std::cout << "numInstances=" << numInstances << std::endl;
+		std::cout << "numMaterials=" << m_materials.size() << std::endl;
+		std::cout << "numTextures=" << m_textures.size() << std::endl;
+	}
+
+	ospray::miniSG::Texture2D* importTexture()
+	{
+		ospray::miniSG::Texture2D* tex = new ospray::miniSG::Texture2D();
+
+		tex->width = in.read_int();
+		tex->height = in.read_int();
+		tex->channels = in.read_int();
+		tex->depth = in.read_int();
+		tex->prefereLinear = in.read_int();
+		int size = tex->width*tex->height*tex->channels*tex->depth;
+		tex->data = malloc(size);
+		in.read_data((char*)tex->data, size);
+
+		return tex;
+	}
+
+
+	ospcommon::Ref<ospray::miniSG::Material> importMaterial()
+	{
+		ospcommon::Ref<ospray::miniSG::Material> mat = new ospray::miniSG::Material();
+
+		mat->name = in.read_string();
+		mat->type = in.read_string();
+		int numParams = in.read_int();
+		for( int i=0;i<numParams;++i )
+		{
+			//ospcommon::Ref<ospray::miniSG::Material::Param> param = new ospray::miniSG::Material::Param();
+			ospray::miniSG::Material::Param* param = new ospray::miniSG::Material::Param();
+
+			std::string name = in.read_string();
+			param->type = (ospray::miniSG::Material::Param::DataType)in.read_int();
+
+			switch( param->type )
+			{
+				case ospray::miniSG::Material::Param::INT:
+				{
+					param->i[0] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::INT_2:
+				{
+					param->i[0] = in.read_int();
+					param->i[1] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::INT_3:
+				{
+					param->i[0] = in.read_int();
+					param->i[1] = in.read_int();
+					param->i[2] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::INT_4:
+				{
+					param->i[0] = in.read_int();
+					param->i[1] = in.read_int();
+					param->i[2] = in.read_int();
+					param->i[3] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::UINT:
+				{
+					param->ui[0] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::UINT_2:
+				{
+					param->ui[0] = in.read_int();
+					param->ui[1] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::UINT_3:
+				{
+					param->ui[0] = in.read_int();
+					param->ui[1] = in.read_int();
+					param->ui[2] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::UINT_4:
+				{
+					param->ui[0] = in.read_int();
+					param->ui[1] = in.read_int();
+					param->ui[2] = in.read_int();
+					param->ui[3] = in.read_int();
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT:
+				{
+					param->f[0] = in.read_float();
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT_2:
+				{
+					param->f[0] = in.read_float();
+					param->f[1] = in.read_float();
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT_3:
+				{
+					param->f[0] = in.read_float();
+					param->f[1] = in.read_float();
+					param->f[2] = in.read_float();
+				}break;
+				case ospray::miniSG::Material::Param::FLOAT_4:
+				{
+					param->f[0] = in.read_float();
+					param->f[1] = in.read_float();
+					param->f[2] = in.read_float();
+					param->f[3] = in.read_float();
+				}break;
+				case ospray::miniSG::Material::Param::TEXTURE:
+				{
+					int texture_index = in.read_int();
+					if( texture_index >= 0 )
+						param->ptr = m_textures[texture_index];
+					else
+						param->ptr = 0;
+				}break;
+				case ospray::miniSG::Material::Param::STRING:
+				{
+					std::string s = in.read_string();
+					param->set(s.c_str());
+				}break;
+				default:
+				case ospray::miniSG::Material::Param::UNKNOWN:
+				{
+				}break;
+			}; // switch(param->type)
+
+			//if(param->type == ospray::miniSG::Material::Param::TEXTURE)
+			//	continue;
+
+			mat->params[name] = param;
+		} // for param
+
+
+
+		return mat;
+	}
+
+	void importMesh(ospray::miniSG::Model &model)
+	{
+		ospray::miniSG::Mesh *mesh = new ospray::miniSG::Mesh();
+		model.mesh.push_back(mesh);
+		mesh->material = nullptr;
+
+		// name
+		mesh->name = in.read_string();
+		
+		// positions
+		mesh->position.resize( in.read_int() );
+		if( !mesh->position.empty() )
+			in.read_data( (char*)&mesh->position[0], mesh->position.size()*sizeof(ospcommon::vec3fa) );
+
+		// normal
+		mesh->normal.resize( in.read_int() );
+		if( !mesh->normal.empty() )
+			in.read_data( (char*)&mesh->normal[0], mesh->normal.size()*sizeof(ospcommon::vec3fa) );
+
+		// color
+		mesh->color.resize( in.read_int() );
+		if( !mesh->color.empty() )
+			in.read_data( (char*)&mesh->color[0], mesh->color.size()*sizeof(ospcommon::vec3fa) );
+
+		// texcoord
+		mesh->texcoord.resize( in.read_int() );
+		if( !mesh->texcoord.empty() )
+			in.read_data( (char*)&mesh->texcoord[0], mesh->texcoord.size()*sizeof(ospcommon::vec2f) );
+
+		// triangle
+		mesh->triangle.resize( in.read_int() );
+		if( !mesh->triangle.empty() )
+			in.read_data( (char*)&mesh->triangle[0], mesh->triangle.size()*sizeof(ospray::miniSG::Triangle) );
+
+		// triangleMaterialId
+		mesh->triangleMaterialId.resize( in.read_int() );
+		if( !mesh->triangleMaterialId.empty() )
+			in.read_data( (char*)&mesh->triangleMaterialId[0], mesh->triangleMaterialId.size()*sizeof(uint32_t) );
+
+		// material
+		int material_index = in.read_int();
+		if(material_index >= 0)
+			mesh->material = m_materials[material_index];
+		/*
+		std::cout << "MiniSGExporter::importMesh...\n";
+		std::cout << "mesh.name=" << mesh->name << std::endl;
+		std::cout << "numPoints=" << mesh->position.size() << std::endl;
+		std::cout << "numNormals=" << mesh->normal.size() << std::endl;
+		std::cout << "numColors=" << mesh->color.size() << std::endl;
+		std::cout << "numTexcoords=" << mesh->texcoord.size() << std::endl;
+		std::cout << "numTriangles=" << mesh->triangle.size() << std::endl;
+		std::cout << "numTriangleMaterialId=" << mesh->triangleMaterialId.size() << std::endl;
+		std::cout << "numMaterials=" << mesh->materialList.size() << std::endl;
+		*/
+	}
+
+};
+
+
+
 struct OSPRRenderer : public IScene
 {
 	std::map<std::string, ospray::cpp::ManagedObject*> m_objects;
@@ -418,7 +1035,7 @@ struct OSPRRenderer : public IScene
 
 		ospMat = renderer.newMaterial("OBJMaterial");
 
-		ospMat.set("Kd", .6f, 0.6f, 0.6f);
+		//ospMat.set("Kd", .6f, 0.6f, 0.6f);
 		ospMat.commit();
 		return ospMat;
 	}
@@ -426,14 +1043,16 @@ struct OSPRRenderer : public IScene
 
 	ospray::cpp::Material createMaterial(ospray::miniSG::Material *mat)
 	{
+		//return createDefaultMaterial();
 		if (mat == nullptr) return createDefaultMaterial();
+
 
 		static std::map<miniSG::Material *, cpp::Material> alreadyCreatedMaterials;
 
-		if (alreadyCreatedMaterials.find(mat) != alreadyCreatedMaterials.end())
-		{
-			return alreadyCreatedMaterials[mat];
-		}
+		//if (alreadyCreatedMaterials.find(mat) != alreadyCreatedMaterials.end())
+		//{
+		//	return alreadyCreatedMaterials[mat];
+		//}
 
 		const char *type = mat->getParam("type", "OBJMaterial");
 		assert(type);
@@ -454,6 +1073,9 @@ struct OSPRRenderer : public IScene
 		{
 			const char *name = it->first.c_str();
 			const miniSG::Material::Param *p = it->second.ptr;
+
+			//std::cout << "\tmaterial parameter " << name << std::endl;
+			
 
 			switch(p->type)
 			{
@@ -490,8 +1112,7 @@ struct OSPRRenderer : public IScene
 						ospCommit(ospTex);
 						ospMat.set(name, ospTex);
 					}
-					break;
-				}
+				}break;
 				default:
 					throw std::runtime_error("unknown material parameter type");
 			};
@@ -506,15 +1127,19 @@ struct OSPRRenderer : public IScene
 	{
 		if(msg == "loadSponza")
 		{
-			loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj" );
-			fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+			//loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj" );
+			loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.msg" );
 		}else
 		if( msg == "loadFluidsurface" )
 		{
-			loadBObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz" );
-			fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);			
+			//loadBObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz" );
+			loadMSG("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg");
+		}else
+		if( msg == "loadSanMiguel" )
+		{
+			//loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.obj" );
+			loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.msg" );
 		}
-		
 	}
 
 	void loadBObj(const std::string filename)
@@ -536,8 +1161,17 @@ struct OSPRRenderer : public IScene
 		setModel(msgModel);
 	}
 
+	void loadMSG(const std::string filename)
+	{
+		std::cout << "loading msg " << filename << std::endl;
+		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
+		MiniSGImporter(filename, *msgModel);
+		setModel(msgModel);
+	}
+
 	void setModel( ospcommon::Ref<ospray::miniSG::Model> msgModel )
 	{
+		std::cout << "setModel\n";
 		std::string geometryType = "triangles";
 		
 
@@ -604,15 +1238,17 @@ struct OSPRRenderer : public IScene
 
 			// handle materials -----------------
 			// add triangle material id array to mesh
-			//if (msgMesh->materialList.empty())
-			if(1)
+			if (msgMesh->materialList.empty())
+			//if(1)
 			{
+				//std::cout << "single material\n";
 				// we have a single material for this mesh...
 				auto singleMaterial = createMaterial(msgMesh->material.ptr);
 				//auto singleMaterial = createDefaultMaterial(renderer);
 				ospMesh.setMaterial(singleMaterial);
 			} else
 			{
+				//std::cout << "material list\n";
 				// we have an entire material list, assign that list
 				std::vector<OSPMaterial> materialList;
 				std::vector<OSPTexture2D> alphaMaps;
@@ -675,13 +1311,15 @@ struct OSPRRenderer : public IScene
 			ospMesh.commit();
 
 			model.addGeometry(ospMesh);
-			model.commit();
-
-			renderer.set("world",  model);
-			renderer.set("model",  model);
-			renderer.commit();
 		}
+		std::cout << "setModel done\n";
+		model.commit();
 
+		renderer.set("world",  model);
+		renderer.set("model",  model);
+		renderer.commit();
+
+		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
 		
 
 
@@ -815,6 +1453,13 @@ struct OSPRRenderer : public IScene
 	{
 		std::cout << "OSPRRenderer::create: type="  << type << " handle=" << object_handle << std::endl;
 		bool somethingCreated = true;
+		if( type == "SphereLight" )
+		{
+			auto ospLight = renderer.newLight("sphere");
+			ospLight.set("name", object_handle);
+			m_lights.push_back(std::make_pair(object_handle, ospLight));
+			updateLightList();
+		}else
 		if( type == "DirectionalLight" )
 		{
 			auto ospLight = renderer.newLight("directional");
@@ -827,7 +1472,7 @@ struct OSPRRenderer : public IScene
 			auto ospLight = renderer.newLight("hdri");
 			//ospLight.set("name", object_handle);
 			m_lights.push_back(std::make_pair(object_handle, ospLight));
-			updateLightList();			
+			updateLightList();
 		}else
 		{
 			somethingCreated = false;
@@ -840,6 +1485,36 @@ struct OSPRRenderer : public IScene
 		}
 	}
 
+	virtual void remove( const std::string& object_handle )override
+	{
+		std::cout << "OSPRRenderer::delete: handle=" << object_handle << std::endl;
+		ospray::cpp::ManagedObject* object = getObject( object_handle );
+
+		if(object)
+		{
+			// find object in light list
+			//for( int i=0,numLights=m_lights.size();i<numLights;++i )
+			for( auto it = m_lights.begin();it!=m_lights.end();++it )
+			{
+				ospray::cpp::Light* light = &it->second;
+				if( light == object )
+				{
+					m_lights.erase(it);
+					std::cout << "object removed\n";
+					break;
+				}
+			}
+
+			updateLightList();
+			updateObjectMap();
+			fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
+		}else
+		{
+			std::cout << "OSPRRenderer::delete: error object " << object_handle << " not found\n";
+		}
+
+	}
+
 
 
 	void advance()
@@ -849,7 +1524,7 @@ struct OSPRRenderer : public IScene
 		timer.start();
 		renderer.renderFrame(fb, OSP_FB_COLOR | OSP_FB_ACCUM);
 		timer.stop();
-		std::cout << "render frame took " << timer.elapsedSeconds() << "s\n";
+		//std::cout << "render frame took " << timer.elapsedSeconds() << "s\n";
 		++counter;
 	}
 
@@ -918,7 +1593,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    int result = zsocket_connect (client, "tcp://193.196.155.53:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.55:5570");
     if(!result)
         std::cout << "connected to server...\n";
 
@@ -1050,6 +1725,57 @@ int main(int argc, const char **argv)
 
 	g_osprRenderer = new OSPRRenderer(argc, argv);
 
+	/*
+	std::string exportFile;
+	{
+		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
+
+
+
+		// fluidsurface ---
+		//std::string importFile = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz";
+		//exportFile = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg";
+
+		// sponza ---
+		//std::string importFile = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj";
+		//exportFile = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.msg";
+
+		// san-miguel ---
+		std::string importFile = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.obj";
+		exportFile = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.msg";
+
+
+		Timer timer;
+		timer.reset();
+		timer.start();
+
+		//BOBJLoader( *msgModel,  ospcommon::FileName(importFile) );
+		ospray::miniSG::importOBJ(*msgModel, ospcommon::FileName(importFile));
+
+		timer.stop();
+		std::cout << "importOBJ took " << timer.elapsedSeconds() << "s\n";
+		MiniSGExporter exportMiniSG(exportFile, *msgModel);
+
+	}
+	std::cout << "done export\n";
+	{
+		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
+
+		// fluidsurface ---
+		//MiniSGImporter importMiniSG("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg", *msgModel);
+
+		Timer timer;
+		timer.reset();
+		timer.start();
+		MiniSGImporter importMiniSG(exportFile, *msgModel);
+		timer.stop();
+		std::cout << "importMSG took " << timer.elapsedSeconds() << "s\n";
+		g_osprRenderer->setModel( msgModel );
+	}
+
+	return 0;
+	*/
+
 
 /*
 	// save screenshot
@@ -1062,7 +1788,9 @@ int main(int argc, const char **argv)
 
 	// run thread
     zthread_new (client_task, NULL);
-    zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
+    //int secondsToRun = 50;
+    int secondsToRun = 5000;
+    zclock_sleep( secondsToRun * 1000);    //  Run for 50 seconds then quit
 
 	delete g_osprRenderer;
 
