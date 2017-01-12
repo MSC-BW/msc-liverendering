@@ -170,6 +170,7 @@ struct WebsocketServer
 	void on_message(websocketpp::connection_hdl hdl, WebsocketServer::message_ptr msg)
 	{
 	    //std::cout << "on_message called with hdl: " << hdl.lock().get() << " and message: " << msg->get_payload() << std::endl;
+	    //std::cout << "on_message called" << std::endl;
 
 	    // check for a special command to instruct the server to stop listening so
 	    // it can be cleanly exited.
@@ -465,7 +466,9 @@ int main()
 	std::thread* wsserver_thread = new std::thread(&WebsocketServer::run, g_wsserver);
 
 	zthread_new (server_task, NULL);
-    zclock_sleep (50 * 1000);    //  Run for 50 seconds then quit
+	//int secondsToRun = 50;
+	int secondsToRun = 5000;
+    zclock_sleep (secondsToRun * 1000);    //  Run for 50 seconds then quit
     return 0;
 
 /*
