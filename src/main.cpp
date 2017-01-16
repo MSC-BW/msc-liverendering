@@ -1128,17 +1128,20 @@ struct OSPRRenderer : public IScene
 		if(msg == "loadSponza")
 		{
 			//loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj" );
-			loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.msg" );
+			//loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.msg" );
+			loadMSG("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/crytek-sponza/sponza.msg");
 		}else
 		if( msg == "loadFluidsurface" )
 		{
 			//loadBObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz" );
-			loadMSG("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg");
+			//loadMSG("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg");
+			loadMSG("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/fluidsurface/fluidsurface_final_0200.msg");
 		}else
 		if( msg == "loadSanMiguel" )
 		{
 			//loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.obj" );
-			loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.msg" );
+			//loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.msg" );
+			loadMSG("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/san-miguel/sanMiguel.msg");
 		}
 	}
 
@@ -1593,7 +1596,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    int result = zsocket_connect (client, "tcp://193.196.155.55:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.53:5570");
     if(!result)
         std::cout << "connected to server...\n";
 
