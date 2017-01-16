@@ -131,6 +131,10 @@ class Editor
 	{
 		var object = null;
 		// TODO: reflect object creation locally
+		if( type == "SphereLight" )
+		{
+			object = new SphereLight();
+		}else
 		if( type == "DirectionalLight" )
 		{
 			object = new DirectionalLight();
@@ -168,10 +172,19 @@ class Editor
 		{
 			var object = this.objects_handle[object_handle];
 
+			if( object == this.selected )
+				this.select(null);
+
 			delete this.objects_handle[object_handle];
 			delete this.objects[object.id];
 		}
-		
+
+		// all scene edits will be applied to the remote scene as well
+		var command = rsiDelete( object_handle );
+		this.execute(command);
+
+		// fire event to update gui ---
+		this.signals.sceneGraphChanged.dispatch();
 	}
 
 };

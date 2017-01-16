@@ -18,8 +18,39 @@ class PerspectiveCamera
 		this.uiInfo = {};
 
 		this.uiInfo["fovy"] = {shortName:"fov"};
-		this.uiInfo["apertureRadius"] = {shortName:"aperture"};
-		this.uiInfo["focusDistance"] = {shortName:"focal length"};
+		this.uiInfo["apertureRadius"] = {shortName:"aperture", min:0.0, precision:3, step:0.01};
+		this.uiInfo["focusDistance"] = {shortName:"focal length", min:0.0};
+	}
+
+	getAttr( name )
+	{
+		return this.attributes[name];
+	}
+
+	getAttrNames()
+	{
+		var attrNames = [];
+		for( var attrName in this.attributes )
+			attrNames.push(attrName);
+		return attrNames;
+	}
+
+	getUIInfo( name )
+	{
+		return this.uiInfo[name];
+	}
+};
+
+class SphereLight
+{
+  	constructor()
+	{
+		this.type = "SphereLight";
+		this.name = "";
+		this.id = -1;
+
+		this.attributes = {}
+		this.uiInfo = {};
 	}
 
 	getAttr( name )

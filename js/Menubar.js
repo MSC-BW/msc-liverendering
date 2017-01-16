@@ -4,6 +4,7 @@ function createMenubar( editor )
 	container.setId( 'menubar' );
 
 	container.add( createMenubarFile( editor ) );
+	container.add( createMenubarEdit( editor ) );
 	container.add( createMenubarAdd( editor ) );
 	/*
 	container.add( new Menubar.File( editor ) );

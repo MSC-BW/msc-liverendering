@@ -159,7 +159,8 @@ EOpCode =
     ENOP : 0,
     EMessage : 1,
     ESetAttr : 2,
-    ECreate : 3
+    ECreate : 3,
+    EDelete : 4
 }
 
 // CLIENT API functions ======================================================
@@ -209,6 +210,13 @@ function create( type, object_handle )
 	return buf.to_arraybuffer();
 }
 
+function rsiDelete( object_handle )
+{
+	buf = new OBuffer();
+	buf.write_int(EOpCode.EDelete);
+	buf.write_string(object_handle);
+	return buf.to_arraybuffer();
+}
 
 
 

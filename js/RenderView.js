@@ -128,10 +128,10 @@ class RenderView
 				self.updateCamera();
 			}
 
-			//console.log( "azimuth", this.arcball.azimuth );
-			//console.log( "elevation", this.arcball.elevation );
-			//console.log( "distance", this.arcball.distance );
-			//console.log( "lookat", this.arcball.lookat );
+			console.log( "azimuth", this.arcball.azimuth );
+			console.log( "elevation", this.arcball.elevation );
+			console.log( "distance", this.arcball.distance );
+			console.log( "lookat", this.arcball.lookat );
 
 
 			self.oldMouseX = mouseX;

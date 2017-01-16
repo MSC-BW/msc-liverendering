@@ -27,6 +27,7 @@
 		<script src="js/Editor.js"></script>
 		<script src="js/Menubar.js"></script>
 		<script src="js/Menubar.File.js"></script>
+		<script src="js/Menubar.Edit.js"></script>
 		<script src="js/Menubar.Add.js"></script>
 		<script src="js/RenderView.js"></script>
 		<script src="js/Sidebar.js"></script>
@@ -59,6 +60,15 @@
 			var height = 512;
 			var viewport = new RenderView(editor, width, height);
 			document.body.appendChild( viewport.dom.dom );
+
+		// set camera view 
+			viewport.arcball.azimuth = -433.0;
+			viewport.arcball.elevation = -5.12;
+			viewport.arcball.distance = 252.0;
+			viewport.arcball.lookat = vec3.fromValues(85, 231.0, -56.0);
+			viewport.arcball.sensitivity_pan = 1.0;
+			viewport.arcball.sensitivity_zoom = 0.005;
+			viewport.arcball.sensitivity_rotate = 1.0;
 
 			// needs to be done manually from menu bar
 			editor.connect("ws://localhost:9002/test?id=test");

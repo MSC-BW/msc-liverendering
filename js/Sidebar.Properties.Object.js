@@ -86,6 +86,13 @@ function createSidebarObject( editor )
 					var inputId = rowId + "." + index.toString();
 					var value = attr.array()[index];
 					var attrInput = new UI.Number(value).onChange( update ).setId( inputId );
+					if(uiInfo)
+					{
+						if( "min" in uiInfo )
+							attrInput.min = uiInfo["min"];
+						if( "precision" in uiInfo )
+							attrInput.precision = uiInfo["precision"];
+					}
 					attrRow.add( attrInput );
 					uiElements[inputId] = attrInput;
 			}else
