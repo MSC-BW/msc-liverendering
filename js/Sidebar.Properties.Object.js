@@ -76,7 +76,10 @@ function createSidebarObject( editor )
 			// add attribute name gui element
 			var rowName = attrName;
 			if(uiInfo)
-				rowName = uiInfo.shortName;
+			{
+				if( "shortName" in uiInfo )
+					rowName = uiInfo["shortName"];
+			}
 			attrRow.add( new UI.Text( rowName ).setWidth( '90px' ) );
 
 			// add edit elements
@@ -121,6 +124,7 @@ function createSidebarObject( editor )
 
 				var inputId = rowId;
 				var attrInput = new UI.Color().onChange( update ).setId( inputId ).setValue(color_hex);
+				attrInput.onInput(update);
 				attrRow.add( attrInput );
 				uiElements[inputId] = attrInput;
 			}else

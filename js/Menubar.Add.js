@@ -1,3 +1,11 @@
+
+function pad(n, width, z)
+{
+  z = z || '0';
+  n = n + '';
+  return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+}
+
 function createMenubarAdd( editor )
 {
 	var container = new UI.Panel();
@@ -22,7 +30,11 @@ function createMenubarAdd( editor )
 	option.setTextContent( 'sponza' );
 	option.onClick( function ()
 	{
-		editor.message("loadSponza");
+		//var model_file = "/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/crytek-sponza/sponza.msg";
+		var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.msg";
+
+		//editor.message("loadSponza");
+		editor.message("loadModel:"+model_file);
 		editor.delete("fluidsurface");
 		editor.delete("sponza");
 		editor.delete("san-miguel");
@@ -33,8 +45,7 @@ function createMenubarAdd( editor )
 
 		// now set the modelname attribute
 		var attr_file = new Attribute( "file", Attribute.EType.EString, 1 );
-		//attr_file.setString("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/crytek-sponza/sponza.obj");
-		attr_file.setString("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/crytek-sponza/sponza.msg");
+		attr_file.setString(model_file);
 		
 		object.attributes[attr_file.name()] = attr_file;
 
@@ -56,7 +67,11 @@ function createMenubarAdd( editor )
 	option.setTextContent( 'san-miguel' );
 	option.onClick( function ()
 	{
-		editor.message("loadSanMiguel");
+		//var model_file = "/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/san-miguel/sanMiguel.msg";
+		var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.msg";
+
+		//editor.message("loadSanMiguel");
+		editor.message("loadModel:"+model_file);
 		editor.delete("fluidsurface");
 		editor.delete("sponza");
 		editor.delete("san-miguel");
@@ -67,8 +82,7 @@ function createMenubarAdd( editor )
 
 		// now set the modelname attribute
 		var attr_file = new Attribute( "file", Attribute.EType.EString, 1 );
-		//attr_file.setString("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.obj");
-		attr_file.setString("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/san-miguel/sanMiguel.msg");
+		attr_file.setString(model_file);
 		
 		object.attributes[attr_file.name()] = attr_file;
 
@@ -90,7 +104,13 @@ function createMenubarAdd( editor )
 	option.setTextContent( 'fluidsurface' );
 	option.onClick( function ()
 	{
-		editor.message("loadFluidsurface");
+		//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz";
+		//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg";
+		//var model_file = "/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/fluidsurface/fluidsurface_final_0200.msg";
+		var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface2/fluidsurface.0018.obj";
+
+		//editor.message("loadFluidsurface");
+		editor.message("loadModel:"+model_file);
 		editor.delete("fluidsurface");
 		editor.delete("sponza");
 		editor.delete("san-miguel");
@@ -100,8 +120,7 @@ function createMenubarAdd( editor )
 
 		// now set the modelname attribute
 		var attr_file = new Attribute( "file", Attribute.EType.EString, 1 );
-		//attr_file.setString("/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz");
-		attr_file.setString("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/fluidsurface/fluidsurface_final_0200.msg");
+		attr_file.setString(model_file);
 		
 		object.attributes[attr_file.name()] = attr_file;
 
@@ -114,6 +133,15 @@ function createMenubarAdd( editor )
 		viewport.arcball.sensitivity_zoom = 0.001;		
 		viewport.arcball.sensitivity_rotate = 0.6;
 		viewport.updateCamera();
+
+		editor.setDuration(45);
+		editor.signals.timeChanged.add( function ( time )
+		{
+			var frame = Math.trunc(time);
+			var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface2/fluidsurface."+pad(frame.toString(), 4)+".msg";
+			console.log(model_file);
+			editor.message("loadModel:"+model_file);
+		} );
 
 	} );
 	options.add( option );
@@ -136,9 +164,10 @@ function createMenubarAdd( editor )
 		var attr_color = new Attribute( "color", Attribute.EType.EC3f, 1 );
 		attr_color.setC3f(1.0, 0.94, 0.88);
 		var attr_position = new Attribute( "position", Attribute.EType.EV3f, 1 );
-		attr_position.setV3f( 0.0, 0.0, 0.0 );
+		//attr_position.setV3f( 0.0, 0.0, 0.0 );
+		attr_position.setV3f( 0.64, 2.26, 18.34 );
 		var attr_intensity = new Attribute( "intensity", Attribute.EType.EFloat, 1 );
-		attr_intensity.setFloat( 12.0 );
+		attr_intensity.setFloat( 1.0 );
 		var attr_radius = new Attribute( "radius", Attribute.EType.EFloat, 1 );
 		attr_radius.setFloat( 0.1 );
 
@@ -168,7 +197,7 @@ function createMenubarAdd( editor )
 		var attr_direction = new Attribute( "direction", Attribute.EType.EV3f, 1 );
 		attr_direction.setV3f( -0.3, -1.0, 0.1 );
 		var attr_intensity = new Attribute( "intensity", Attribute.EType.EFloat, 1 );
-		attr_intensity.setFloat( 12.0 );
+		attr_intensity.setFloat( 1.0 );
 		var attr_angularDiameter = new Attribute( "angularDiameter", Attribute.EType.EFloat, 1 );
 		attr_angularDiameter.setFloat( 0.53 );
 

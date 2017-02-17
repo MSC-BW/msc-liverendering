@@ -6,6 +6,8 @@ function createMenubar( editor )
 	container.add( createMenubarFile( editor ) );
 	container.add( createMenubarEdit( editor ) );
 	container.add( createMenubarAdd( editor ) );
+	container.add( createMenubarStatus( editor ) );
+	
 	/*
 	container.add( new Menubar.File( editor ) );
 	container.add( new Menubar.Edit( editor ) );

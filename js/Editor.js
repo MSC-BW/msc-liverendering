@@ -2,29 +2,38 @@ class Editor
 {
 	constructor()
 	{
-		this.idcounter = 0;
+		// callbacks ----
 		var Signal = signals.Signal;
-
 		this.signals =
 		{
 			objectSelected: new Signal(),
 			imageReceived:new Signal(),
-			sceneGraphChanged: new Signal()
+			sceneGraphChanged: new Signal(),
+			connectionOpened: new Signal(),
+			connectionClosed: new Signal(),
+			timeChanged: new Signal(),
+			durationChanged: new Signal()
 		};
 
-
+		// object management ---
+		this.idcounter = 0;
 		this.objects = {};
 		this.objects_handle = {};
 
+		// object selection ---
+		this.selected = null;
 
+		// time
+		this.time = 0;
+		this.duration = 0;
+
+		// connection info ---
+		this.websocket = null;
+
+		// preinitialization ---
 		this.camera = new PerspectiveCamera();
 		this.camera.id = this.idcounter++;
 		this.objects_handle["camera"] = this.camera;
-
-
-		this.selected = null;
-
-		this.websocket = null;
 	}
 
 	connect( url )
@@ -58,6 +67,13 @@ class Editor
 			attr_list.push(attr_focusDistance);
 			attr_list.push(attr_xform);
 			editor.setAttr("camera", attr_list);
+
+			editor.signals.connectionOpened.dispatch();
+		}
+		this.websocket.onclose =
+		function()
+		{
+			editor.signals.connectionClosed.dispatch();
 		}
 	}
 
@@ -100,7 +116,19 @@ class Editor
 		}
 	}
 
+	setTime( time )
+	{
+		console.log("Editor::setTime", time);
+		this.time = time;
+		this.signals.timeChanged.dispatch( this.time );
+	}
 
+	setDuration( duration )
+	{
+		console.log("Editor::setDuration", duration);
+		this.duration = duration;
+		this.signals.durationChanged.dispatch( this.duration );
+	}
 
 	// rsi interface ---------------------------------------------
 	message( text )

@@ -12,13 +12,13 @@ class PerspectiveCamera
 		this.attributes["apertureRadius"] = new Attribute( "apertureRadius", Attribute.EType.EFloat, 1 );
 		this.attributes["apertureRadius"].setFloat(0.0);
 		this.attributes["focusDistance"] = new Attribute( "focusDistance", Attribute.EType.EFloat, 1 );
-		this.attributes["focusDistance"].setFloat(0.0);
+		this.attributes["focusDistance"].setFloat(0.1);
 		this.attributes["xform"] = new Attribute( "xform", Attribute.EType.EM44f, 1 );
 
 		this.uiInfo = {};
 
 		this.uiInfo["fovy"] = {shortName:"fov"};
-		this.uiInfo["apertureRadius"] = {shortName:"aperture", min:0.0, precision:3, step:0.01};
+		this.uiInfo["apertureRadius"] = {shortName:"aperture", min:0.0, precision:3, step:0.001};
 		this.uiInfo["focusDistance"] = {shortName:"focal length", min:0.0};
 	}
 
@@ -51,6 +51,10 @@ class SphereLight
 
 		this.attributes = {}
 		this.uiInfo = {};
+
+		
+		this.uiInfo["radius"] = {min:0.0};
+		this.uiInfo["intensity"] = {min:0.0};
 	}
 
 	getAttr( name )
@@ -83,7 +87,8 @@ class DirectionalLight
 		this.attributes = {}
 		this.uiInfo = {};
 
-		this.uiInfo["angularDiameter"] = {shortName:"spread"};
+		this.uiInfo["angularDiameter"] = {shortName:"spread", min:0.0};
+		this.uiInfo["intensity"] = {min:0.0};
 	}
 
 	getAttr( name )
@@ -116,6 +121,8 @@ class HDRILight
 
 		this.attributes = {}
 		this.uiInfo = {};
+
+		this.uiInfo["intensity"] = {min:0.0};
 	}
 
 	getAttr( name )
