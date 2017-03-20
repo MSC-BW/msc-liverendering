@@ -1142,6 +1142,29 @@ struct OSPRRenderer : public IScene
 			//loadObj( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.obj" );
 			//loadMSG( "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/san-miguel/sanMiguel.msg" );
 			loadMSG("/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/san-miguel/sanMiguel.msg");
+		}else
+		{
+			// seperate string into command and argument
+			std::vector<std::string> strings;
+			splitString( msg, strings, ":" );
+
+			if( strings.size() == 2 )
+			{
+				std::string command = strings[0];
+				std::string argument = strings[1];
+				if( command == "loadModel")
+				{
+					std::string ext = getExtension(argument);
+					if( ext == ".obj" )
+						loadObj(argument);
+					else
+					if( ext == ".gz" )
+						loadBObj(argument);
+					else
+					if( ext == ".msg" )
+						loadMSG(argument);
+				}
+			}
 		}
 	}
 
@@ -1151,8 +1174,8 @@ struct OSPRRenderer : public IScene
 		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
 		BOBJLoader( *msgModel,  ospcommon::FileName(filename) );
 		ospcommon::box3f bbox = msgModel.ptr->getBBox();
-		std::cout << "bbox.lower=" <<bbox.lower.x << " " << bbox.lower.y << " " << bbox.lower.z << std::endl;
-		std::cout << "bbox.upper=" <<bbox.upper.x << " " << bbox.upper.y << " " << bbox.upper.z << std::endl;
+		ospcommon::vec3f center = bbox.center();
+		std::cout << center.x << " " << center.y << " " << center.z << std::endl;
 		setModel(msgModel);
 	}
 
@@ -1323,32 +1346,6 @@ struct OSPRRenderer : public IScene
 		renderer.commit();
 
 		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
-		
-
-
-
-/*
-		std::string name = "hdri light";
-
-		ospray::cpp::ManagedObject* object = getObject( name );
-		if( object )
-		{
-			std::cout << "got object!!!!!!!\n";
-			std::string HDRI_file_name = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/lightProbes/rnl_probe.pfm";
-			ospcommon::FileName imageFile(HDRI_file_name.c_str());
-			ospray::miniSG::Texture2D *lightMap = ospray::miniSG::loadTexture(imageFile.path(), imageFile.base());
-		    if (lightMap == NULL){
-		      std::cout << "Failed to load hdri-light texture '" << imageFile << "'" << std::endl;
-		    } else {
-		      std::cout << "Successfully loaded hdri-light texture '" << imageFile << "'" << std::endl;
-		    }
-		    OSPTexture2D ospLightMap = ospray::miniSG::createTexture2D(lightMap);
-			object->set( "map", ospLightMap);
-			object->commit();
-		}
-
-		fb.clear(OSP_FB_COLOR|OSP_FB_DEPTH|OSP_FB_ACCUM);
-*/
 	}
 	virtual void setAttr( const std::string& object_handle, const Attribute* attr_list, int nattrs )override
 	{
@@ -1596,7 +1593,7 @@ static void *client_task (void *args)
     std::string identity = "head";
     zsocket_set_identity (client, identity.c_str());
     //zsocket_connect (client, "tcp://localhost:5570");
-    int result = zsocket_connect (client, "tcp://193.196.155.53:5570");
+    int result = zsocket_connect (client, "tcp://193.196.155.58:5570");
     if(!result)
         std::cout << "connected to server...\n";
 
@@ -1720,13 +1717,31 @@ static void *client_task (void *args)
 
 int main(int argc, const char **argv)
 {
-
 	// initialize OSPRay; OSPRay parses (and removes) its commandline parameters, e.g. "--osp:debug"
 	ospInit(&argc, argv);
 	std::cout << "ospInit done\n";std::flush(std::cout);
 
 
 	g_osprRenderer = new OSPRRenderer(argc, argv);
+
+
+
+
+/*
+	// export animation as msg
+	for( int i=0; i<=150;++i)
+	{
+		std::string filename_in = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface3/tmp/fluidsurface_final_" + zeroPadNumber(i) + ".bobj.gz";
+		std::cout << "converting file " << i << " " << filename_in << std::endl;
+		std::string filename_out = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface3/fluidsurface." + zeroPadNumber(i) + ".msg";
+		ospcommon::Ref<ospray::miniSG::Model> msgModel(new ospray::miniSG::Model);
+		//ospray::miniSG::importOBJ(*msgModel, ospcommon::FileName(filename_in));
+		BOBJLoader( *msgModel,  ospcommon::FileName(filename_in) );
+
+		MiniSGExporter exportMiniSG(filename_out, *msgModel);
+	}
+	return 0;
+*/
 
 	/*
 	std::string exportFile;
