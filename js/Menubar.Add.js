@@ -107,10 +107,12 @@ function createMenubarAdd( editor )
 		//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.bobj.gz";
 		//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface/fluidsurface_final_0200.msg";
 		//var model_file = "/lustre/cray/ws8/ws/zmcdkoer-ospraydemo/scenes/fluidsurface/fluidsurface_final_0200.msg";
-		var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface2/fluidsurface.0018.obj";
+		//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface2/fluidsurface.0018.obj";
+		//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface3/tmp/fluidsurface_final_0052.bobj.gz";
+		var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface3/fluidsurface.0052.msg";
 
 		//editor.message("loadFluidsurface");
-		editor.message("loadModel:"+model_file);
+		//editor.message("loadModel:"+model_file);
 		editor.delete("fluidsurface");
 		editor.delete("sponza");
 		editor.delete("san-miguel");
@@ -125,6 +127,8 @@ function createMenubarAdd( editor )
 		object.attributes[attr_file.name()] = attr_file;
 
 		// update camera...
+		/*
+		// old fluidsurface from Ari:
 		viewport.arcball.azimuth = -49.0;
 		viewport.arcball.elevation = 31.0;
 		viewport.arcball.distance = 2.0;
@@ -133,15 +137,39 @@ function createMenubarAdd( editor )
 		viewport.arcball.sensitivity_zoom = 0.001;		
 		viewport.arcball.sensitivity_rotate = 0.6;
 		viewport.updateCamera();
-
-		editor.setDuration(45);
+		*/
+		/*
+		// houdini animation:
+		viewport.arcball.azimuth = -242;
+		viewport.arcball.elevation = 45.3;
+		viewport.arcball.distance = 36.6;
+		viewport.arcball.lookat = vec3.fromValues(-0.324, -2.732, 1.428);
+		viewport.arcball.sensitivity_pan = .01;
+		viewport.arcball.sensitivity_zoom = 0.001;		
+		viewport.arcball.sensitivity_rotate = 0.6;
+		viewport.updateCamera();
+		*/
+		// houdini animation:
+		viewport.arcball.azimuth = 0;
+		viewport.arcball.elevation = 45.0;
+		viewport.arcball.distance = 2.2;
+		viewport.arcball.lookat = vec3.fromValues(-0.0038611299823969603, -0.02474219910800457, 0.9438909888267517);
+		viewport.arcball.sensitivity_pan = .01;
+		viewport.arcball.sensitivity_zoom = 0.001;		
+		viewport.arcball.sensitivity_rotate = 0.6;
+		viewport.updateCamera();
+		editor.setDuration(150);
 		editor.signals.timeChanged.add( function ( time )
 		{
 			var frame = Math.trunc(time);
-			var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface2/fluidsurface."+pad(frame.toString(), 4)+".msg";
+			console.log(frame, time)
+			//var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface3/tmp/fluidsurface_final_"+pad(frame.toString(), 4)+".bobj.gz";
+			var model_file = "/zhome/academic/HLRS/zmc/zmcdkoer/ospr/scenes/fluidsurface3/fluidsurface."+pad(frame.toString(), 4)+".msg";
 			console.log(model_file);
 			editor.message("loadModel:"+model_file);
 		} );
+
+		editor.setTime(editor.time);
 
 	} );
 	options.add( option );

@@ -119,7 +119,7 @@ function createTimeline( editor )
 	timeMark.style.top = '0px';
 	timeMark.style.left = '-8px';
 	timeMark.style.width = '16px';
-	timeMark.style.height = '100%';
+	timeMark.style.height = '50%';
 	timeMark.style.background = 'url(' + ( function ()
 	{
 		var canvas = document.createElement( 'canvas' );
