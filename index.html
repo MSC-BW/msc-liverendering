@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>editor</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	</head>
+	<body ontouchstart="">
+
+		<!-- css stylesheets -->
+		<link href="css/main.css" rel="stylesheet"/>
+		<link id="theme" href="css/light.css" rel="stylesheet" />
+
+
+		<!-- javascript components -->
+		<script src="http://cdnjs.cloudflare.com/ajax/libs/mathjs/3.2.0/math.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.3.2/gl-matrix-min.js"></script>
+
+		<script src="js/libs/rsi.js"></script>
+		<script src="js/libs/rsiwrapper.js"></script>
+
+		<script src="js/libs/signals.min.js"></script>
+
+		<script src="js/libs/ui.js"></script>
+		<script src="js/libs/ui.three.js"></script>
+
+		<script src="js/Editor.js"></script>
+		<script src="js/Menubar.js"></script>
+		<script src="js/Menubar.File.js"></script>
+		<script src="js/Menubar.Edit.js"></script>
+		<script src="js/Menubar.Add.js"></script>
+		<script src="js/Menubar.Status.js"></script>
+		<script src="js/RenderView.js"></script>
+		<script src="js/Sidebar.js"></script>
+		<script src="js/Sidebar.Scene.js"></script>
+		<script src="js/Sidebar.Properties.js"></script>
+		<script src="js/Sidebar.Properties.Object.js"></script>
+		<script src="js/Timeline.js"></script>
+
+		<script>
+
+			window.URL = window.URL || window.webkitURL;
+			window.BlobBuilder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder;
+
+			Number.prototype.format = function (){
+				return this.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1,");
+			};
+
+			//
+
+
+			// disable context menus....
+			document.oncontextmenu = function()
+			{
+				return false;
+			}
+
+			var editor = new Editor();
+
+
+			var width = 512;
+			var height = 512;
+			var viewport = new RenderView(editor, width, height);
+			document.body.appendChild( viewport.dom.dom );
+
+			// set camera view 
+			viewport.arcball.azimuth = -433.0;
+			viewport.arcball.elevation = -5.12;
+			viewport.arcball.distance = 252.0;
+			viewport.arcball.lookat = vec3.fromValues(85, 231.0, -56.0);
+			viewport.arcball.sensitivity_pan = 1.0;
+			viewport.arcball.sensitivity_zoom = 0.005;
+			viewport.arcball.sensitivity_rotate = 1.0;
+
+
+
+			var menubar = createMenubar( editor );
+			document.body.appendChild( menubar.dom );
+
+
+			var sidebar = createSidebar( editor );
+			document.body.appendChild( sidebar.dom );
+
+			var timeline = createTimeline( editor );
+			document.body.appendChild( timeline.dom );
+
+
+			// needs to be done manually from menu bar
+			editor.connect("ws://localhost:9002/test?id=test");
+			editor.setDuration(100);
+		</script>
+	</body>
+</html>
