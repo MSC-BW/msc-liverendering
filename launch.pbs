@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -N ospray_hello_world
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=00:01:00
+#PBS -j oe
+  
+# Change to the direcotry that the job was submitted from
+#cd $PBS_O_WORKDIR
+cd /zhome/academic/HLRS/zmc/zmcdkoer/ospr/ospray-test-build
+
+# do something
+module swap PrgEnv-cray PrgEnv-gnu
+module swap gcc/6.1.0 gcc/4.9.3
+module load numlib/intel/tbb
+
+export MPICH_MAX_THREAD_SAFETY=multiple
+
+export LD_LIBRARY_PATH=/zhome/academic/HLRS/zmc/zmcdkoer/ospr/install/lib64/:$LD_LIBRARY_PATH
+
+# Launch the parallel job to the allocated compute nodes
+aprun -B ./ospray-test --osp:mpi /univ_1/ws1/ws/zmcdkoer-ospray-test-0/data/xfrog-forest.xml
